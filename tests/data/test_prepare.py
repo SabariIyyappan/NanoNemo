@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from nanonemo.data.prepare import ShardWriter, Stats, assign_split, dedup_and_filter, prepare
 from nanonemo.data.shard import open_shard, read_header
@@ -87,3 +88,10 @@ def test_prepare_never_splits_one_document_across_splits(tmp_path):
                     assert doc["id"] not in seen_ids, f"{doc['id']} appears in more than one split"
                     seen_ids.add(doc["id"])
     assert len(seen_ids) == 30
+
+
+def test_prepare_rejects_empty_val_split(tmp_path):
+    # 3 docs with val_frac=0.001: (1 - 0.001)^3 ≈ 99.7% chance that no doc lands in val.
+    docs = [{"id": f"d{i}", "text": "some text " * 30} for i in range(3)]
+    with pytest.raises(ValueError, match="val split is empty"):
+        prepare(iter(docs), tmp_path, min_chars=1, val_frac=0.001, shard_tokens=1000, source={})

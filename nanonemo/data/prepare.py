@@ -154,6 +154,11 @@ def prepare(
         shards = writer.close()
         manifest["splits"][split] = {"n_tokens": sum(s["n_tokens"] for s in shards), "shards": shards}
     manifest["stats"] = vars(stats)
+    # With N docs, P(no doc lands in val) = (1 - val_frac)^N: negligible for real
+    # datasets, but a tiny input with a small val_frac can produce an empty split.
+    for split in ("train", "val"):
+        if manifest["splits"][split]["n_tokens"] == 0 and (split == "train" or val_frac > 0):
+            raise ValueError(f"{split} split is empty ({stats.docs_kept} docs kept, val_frac={val_frac})")
     return manifest
 
 
