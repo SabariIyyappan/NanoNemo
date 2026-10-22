@@ -25,6 +25,8 @@ class TrainConfig:
     eval_every: int = 50  # optimizer steps
     eval_batches: int = 20
     log_every: int = 1
+    wandb_project: str | None = None  # None: console + metrics.jsonl only
+    wandb_run_name: str | None = None
 
     def grad_accum(self, world_size: int = 1) -> int:
         per_micro = self.micro_batch * self.seq_len * world_size

@@ -11,3 +11,5 @@ train:
   peak_lr: 6.0e-4
   eval_every: 25
   eval_batches: 20
+  wandb_project: nanonemo
+  wandb_run_name: m2-smoke-s0-fp32

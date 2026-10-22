@@ -29,7 +29,23 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
     model_cfg, train_cfg = load_config(args.config)
-    train(model_cfg, train_cfg, log_fn=print_record)
+
+    sink = None
+    if train_cfg.wandb_project:
+        from nanonemo.train.wandb_sink import WandbSink
+
+        sink = WandbSink(model_cfg, train_cfg)
+
+    def log_fn(record: dict) -> None:
+        print_record(record)
+        if sink:
+            sink(record)
+
+    try:
+        train(model_cfg, train_cfg, log_fn=log_fn)
+    finally:
+        if sink:
+            sink.finish()
 
 
 if __name__ == "__main__":

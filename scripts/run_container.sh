@@ -26,6 +26,10 @@ EXTRA_MOUNTS=()
 [ -d "$HOME/.kaggle" ] && EXTRA_MOUNTS+=(-v "$HOME/.kaggle":/home/dev/.kaggle:ro)
 EXTRA_ENV=()
 [ -n "${KAGGLE_API_TOKEN:-}" ] && EXTRA_ENV+=(-e KAGGLE_API_TOKEN)
+# W&B: pass through an API key or mode (e.g. WANDB_MODE=offline) if set. Alternatively,
+# `wandb login` once inside the container; it persists in the container home above.
+[ -n "${WANDB_API_KEY:-}" ] && EXTRA_ENV+=(-e WANDB_API_KEY)
+[ -n "${WANDB_MODE:-}" ] && EXTRA_ENV+=(-e WANDB_MODE)
 
 # --ipc=host and the ulimits are NGC's recommended flags for PyTorch
 # (shared memory for data loader workers, pinned memory, deep stacks).
