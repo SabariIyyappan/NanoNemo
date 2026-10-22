@@ -11,6 +11,7 @@ __pycache__/
 # Data, checkpoints, and large profiler outputs (summaries in results/ are tracked)
 /data/
 /checkpoints/
+/runs/
 /wandb/
 *.bin
 *.nsys-rep

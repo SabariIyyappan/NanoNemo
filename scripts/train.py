@@ -1,0 +1,36 @@
+"""Train NanoNemo from a YAML run config.
+
+    scripts/run_container.sh python scripts/train.py --config configs/smoke.yaml
+"""
+
+import argparse
+
+from nanonemo.train.config import load_config
+from nanonemo.train.trainer import train
+
+
+def print_record(r: dict) -> None:
+    if "loss" in r:
+        line = (
+            f"step {r['step']:5d} | loss {r['loss']:.4f} | lr {r['lr']:.2e} | "
+            f"gnorm {r['grad_norm']:.3f} | {r['tokens_per_s']:,.0f} tok/s"
+        )
+        if "peak_mem_gb" in r:
+            line += f" | {r['peak_mem_gb']:.2f} GB"
+        print(line, flush=True)
+    elif "val_loss" in r:
+        print(f"step {r['step']:5d} | val_loss {r['val_loss']:.4f}", flush=True)
+    else:
+        print(r, flush=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True)
+    args = parser.parse_args()
+    model_cfg, train_cfg = load_config(args.config)
+    train(model_cfg, train_cfg, log_fn=print_record)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,13 @@
+# M2 smoke run: S0 reference (eager FP32) on real data, ~20M tokens.
+# Global batch is 64k tokens (not the main run's 0.5M) so 20M tokens gives ~305 optimizer steps.
+model: {}  # spec defaults (nanonemo/model/config.py)
+train:
+  data_dir: data/nemotron_cc
+  out_dir: runs/smoke
+  seq_len: 1024
+  micro_batch: 2          # FP32 eager: micro 4 OOMs on 8 GB
+  global_batch_tokens: 65536
+  total_tokens: 20000000
+  peak_lr: 6.0e-4
+  eval_every: 25
+  eval_batches: 20
