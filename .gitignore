@@ -1,0 +1,18 @@
+# Private planning notes
+project1_plan.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# Data, checkpoints, and large profiler outputs (summaries in results/ are tracked)
+/data/
+/checkpoints/
+/wandb/
+*.bin
+*.nsys-rep
+*.ncu-rep
+*.sqlite
