@@ -50,3 +50,12 @@ Nemotron-CC has already been globally deduplicated and quality-filtered upstream
 - The two are mathematically equivalent, but checkpoints are not interchangeable between them.
 - Rotate-half reads two contiguous halves of each head, which keeps the later Triton RoPE kernel simple.
 - The cos/sin tables and the rotation are computed in FP32, then the result is cast back to the input dtype.
+
+## Parameter count: 114.15M, architecture kept as specified
+- Exact count: 114,150,144 total, 75,516,672 non-embedding (the 50304×768 embedding is tied with the output projection and counted once).
+- This is slightly below the "≈ 115–125M" target. GQA's K/V projections are 3× smaller than in full multi-head attention (~9.4M fewer parameters), and the tied embedding saves another 38.6M.
+- Widening `d_ff` to 2112 or adding a 13th layer would reach 115M+. The specified architecture was kept instead, since the shortfall is under 1%.
+
+## Initial loss is ~10.98, not ln(V) = 10.83
+- The final RMSNorm gives the hidden state unit RMS. Each logit is its dot product with a tied-embedding row (std 0.02), so logits start with std σ = 0.02·√768 ≈ 0.55.
+- Random logits with spread σ cost about σ²/2 ≈ 0.15 nats more than a uniform prediction. The step-0 loss check expects ln(V) + σ²/2.
