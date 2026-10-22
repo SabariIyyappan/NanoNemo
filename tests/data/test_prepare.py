@@ -95,3 +95,15 @@ def test_prepare_rejects_empty_val_split(tmp_path):
     docs = [{"id": f"d{i}", "text": "some text " * 30} for i in range(3)]
     with pytest.raises(ValueError, match="val split is empty"):
         prepare(iter(docs), tmp_path, min_chars=1, val_frac=0.001, shard_tokens=1000, source={})
+
+
+def test_max_train_tokens_stops_early(tmp_path):
+    docs = make_docs(2000)
+    manifest = prepare(
+        iter(docs), tmp_path, min_chars=1, val_frac=0.05, shard_tokens=10_000, source={},
+        tokenize_batch_size=16, max_train_tokens=5_000,
+    )
+    train = manifest["splits"]["train"]["n_tokens"]
+    per_doc = max(len(d["text"]) for d in docs)  # chars bound tokens from above
+    assert 5_000 <= train <= 5_000 + 16 * per_doc  # overshoot at most one tokenize batch
+    assert manifest["stats"]["docs_seen"] < 2000

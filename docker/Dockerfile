@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir \
         tiktoken \
         wandb \
         pyyaml \
+        zstandard \
+        kaggle \
         pytest
 
 WORKDIR /workspace/nanonemo

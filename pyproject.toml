@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A ~125M Llama-style LM pretrained from scratch, and its training made fast on NVIDIA GPUs."
 requires-python = ">=3.10"
 # torch and triton come from the NGC container (or Kaggle's image); not pinned here.
-dependencies = ["tiktoken", "wandb", "pyyaml"]
+dependencies = ["tiktoken", "wandb", "pyyaml", "zstandard", "requests"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

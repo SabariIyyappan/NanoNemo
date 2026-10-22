@@ -84,6 +84,7 @@ class ShardWriter:
         self.prefix = prefix
         self.shard_tokens = shard_tokens
         self.shards: list[dict] = []
+        self.n_tokens = 0  # total received so far, written or still buffered
         self._buffer: list[np.ndarray] = []
         self._buffered_len = 0
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -93,6 +94,7 @@ class ShardWriter:
             self._flush()
         self._buffer.append(tokens)
         self._buffered_len += len(tokens)
+        self.n_tokens += len(tokens)
 
     def _flush(self) -> None:
         if not self._buffer:
@@ -118,6 +120,7 @@ def prepare(
     shard_tokens: int = 100_000_000,
     source: dict,
     tokenize_batch_size: int = 256,
+    max_train_tokens: int | None = None,
 ) -> dict:
     stats = Stats()
     filtered = dedup_and_filter(docs, min_chars=min_chars, stats=stats)
@@ -140,6 +143,9 @@ def prepare(
         text_buffers[split].append(doc["text"])
         if len(text_buffers[split]) >= tokenize_batch_size:
             drain(split)
+            # Checked only after a drain, so the budget can overshoot by at most one batch.
+            if max_train_tokens is not None and writers["train"].n_tokens >= max_train_tokens:
+                break
     for split in text_buffers:
         drain(split)  # each split's final, partial batch
 
@@ -147,6 +153,7 @@ def prepare(
         "tokenizer": TOKENIZER_NAME,
         "min_chars": min_chars,
         "val_frac": val_frac,
+        "max_train_tokens": max_train_tokens,
         "source": source,
         "splits": {},
     }
@@ -165,17 +172,49 @@ def prepare(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--source", choices=["hf_sample", "nemotron_cc"], default="hf_sample")
     parser.add_argument("--repo-id", default="nvidia/Nemotron-Pretraining-Dataset-sample")
     parser.add_argument("--hf-path", default="Nemotron-CC-High-Quality/part_000000.parquet")
+    parser.add_argument("--cc-quality", default="high")
+    parser.add_argument("--cc-files", type=int, default=12, help="files taken evenly across the bucket")
+    parser.add_argument("--raw-dir", type=Path, default=Path("data/raw/nemotron_cc"))
+    parser.add_argument("--max-train-tokens", type=int, default=None)
     parser.add_argument("--min-chars", type=int, default=200)
     parser.add_argument("--val-frac", type=float, default=0.02)
     parser.add_argument("--shard-tokens", type=int, default=2_000_000)
+    parser.add_argument("--download-only", action="store_true")
     args = parser.parse_args()
 
-    docs = load_hf_sample_docs(args.repo_id, args.hf_path)
-    source = {"kind": "hf_sample", "repo_id": args.repo_id, "path": args.hf_path}
+    if args.source == "hf_sample":
+        docs = load_hf_sample_docs(args.repo_id, args.hf_path)
+        source = {"kind": "hf_sample", "repo_id": args.repo_id, "path": args.hf_path}
+    else:
+        from nanonemo.data.shard import file_sha256
+        from nanonemo.data.sources import download, iter_jsonl_zstd, nemotron_cc_paths, select_evenly
+
+        paths = select_evenly(nemotron_cc_paths(args.cc_quality, "actual"), args.cc_files)
+        local = []
+        for i, path in enumerate(paths):
+            print(f"[{i + 1}/{len(paths)}] {Path(path).name}", flush=True)
+            local.append(download(path, args.raw_dir))
+        if args.download_only:
+            return
+        source = {
+            "kind": "nemotron_cc_v1",
+            "quality": args.cc_quality,
+            "kind2": "actual",
+            "files": [{"path": p, "bytes": f.stat().st_size, "sha256": file_sha256(f)} for p, f in zip(paths, local)],
+        }
+        docs = (doc for f in local for doc in iter_jsonl_zstd(f))
+
     manifest = prepare(
-        docs, args.out, min_chars=args.min_chars, val_frac=args.val_frac, shard_tokens=args.shard_tokens, source=source
+        docs,
+        args.out,
+        min_chars=args.min_chars,
+        val_frac=args.val_frac,
+        shard_tokens=args.shard_tokens,
+        source=source,
+        max_train_tokens=args.max_train_tokens,
     )
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(json.dumps(manifest["stats"], indent=2))
