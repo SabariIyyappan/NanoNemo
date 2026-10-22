@@ -76,3 +76,19 @@ class MLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.w_down(F.silu(self.w_gate(x)) * self.w_up(x))
+
+
+class Block(nn.Module):
+    """Pre-norm transformer block: each sublayer reads a normalized copy and adds back to the residual stream."""
+
+    def __init__(self, cfg: ModelConfig):
+        super().__init__()
+        self.norm_attn = RMSNorm(cfg.d_model, cfg.norm_eps)
+        self.attn = Attention(cfg)
+        self.norm_mlp = RMSNorm(cfg.d_model, cfg.norm_eps)
+        self.mlp = MLP(cfg)
+
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+        x = x + self.attn(self.norm_attn(x), cos, sin)
+        x = x + self.mlp(self.norm_mlp(x))
+        return x

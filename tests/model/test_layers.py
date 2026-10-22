@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from nanonemo.model.config import ModelConfig
-from nanonemo.model.layers import MLP, Attention, RMSNorm, apply_rope, rope_cache
+from nanonemo.model.layers import MLP, Attention, Block, RMSNorm, apply_rope, rope_cache
 
 
 def test_config_defaults_match_spec():
@@ -161,3 +161,45 @@ def test_mlp_acts_on_each_token_independently():
     x = torch.randn(1, 8, SMALL.d_model)
     per_token = torch.cat([mlp(x[:, t : t + 1]) for t in range(8)], dim=1)
     torch.testing.assert_close(mlp(x), per_token, rtol=1e-5, atol=1e-5)
+
+
+def test_block_matches_prenorm_residual_formula():
+    torch.manual_seed(0)
+    block = Block(SMALL)
+    cos, sin = rope_cache(SMALL.head_dim, SMALL.max_seq_len)
+    x = torch.randn(2, 16, SMALL.d_model)
+    h = x + block.attn(block.norm_attn(x), cos, sin)
+    expected = h + block.mlp(block.norm_mlp(h))
+    torch.testing.assert_close(block(x, cos, sin), expected)
+
+
+def test_block_with_zeroed_output_projections_is_identity():
+    # Both branches end in wo / w_down; zero them and only the residual path remains.
+    block = Block(SMALL)
+    with torch.no_grad():
+        block.attn.wo.weight.zero_()
+        block.mlp.w_down.weight.zero_()
+    cos, sin = rope_cache(SMALL.head_dim, SMALL.max_seq_len)
+    x = torch.randn(2, 16, SMALL.d_model)
+    torch.testing.assert_close(block(x, cos, sin), x)
+
+
+def test_block_residual_carries_gradient_even_when_branches_are_closed():
+    block = Block(SMALL)
+    with torch.no_grad():
+        block.attn.wo.weight.zero_()
+        block.mlp.w_down.weight.zero_()
+    cos, sin = rope_cache(SMALL.head_dim, SMALL.max_seq_len)
+    x = torch.randn(2, 16, SMALL.d_model, requires_grad=True)
+    block(x, cos, sin).sum().backward()
+    torch.testing.assert_close(x.grad, torch.ones_like(x))
+
+
+def test_block_is_causal():
+    torch.manual_seed(0)
+    block = Block(SMALL)
+    cos, sin = rope_cache(SMALL.head_dim, SMALL.max_seq_len)
+    x = torch.randn(2, 16, SMALL.d_model)
+    x2 = x.clone()
+    x2[:, 10:] = torch.randn_like(x2[:, 10:])
+    torch.testing.assert_close(block(x2, cos, sin)[:, :10], block(x, cos, sin)[:, :10])
