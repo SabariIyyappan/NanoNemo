@@ -12,12 +12,16 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 CACHE_HOME="${NANONEMO_CACHE:-$HOME/.cache/nanonemo-container}"
 mkdir -p "$CACHE_HOME"
 
-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-    docker build -t "$IMAGE" "$REPO/docker"
-fi
+# Always (re)build: a no-op from cache when docker/ is unchanged (~1 s), and it
+# prevents silently running a stale image after the Dockerfile changes.
+docker build -q -t "$IMAGE" "$REPO/docker" >/dev/null
 
 TTY_FLAGS=()
 [ -t 0 ] && TTY_FLAGS=(-it)
+
+# Kaggle API credentials, read-only, only if the user has set them up.
+EXTRA_MOUNTS=()
+[ -d "$HOME/.kaggle" ] && EXTRA_MOUNTS+=(-v "$HOME/.kaggle":/home/dev/.kaggle:ro)
 
 # --ipc=host and the ulimits are NGC's recommended flags for PyTorch
 # (shared memory for data loader workers, pinned memory, deep stacks).
@@ -32,4 +36,5 @@ exec docker run --rm "${TTY_FLAGS[@]}" \
     -e TIKTOKEN_CACHE_DIR=/home/dev/.cache/tiktoken \
     -v "$CACHE_HOME":/home/dev \
     -v "$REPO":/workspace/nanonemo \
+    "${EXTRA_MOUNTS[@]}" \
     "$IMAGE" "$@"
