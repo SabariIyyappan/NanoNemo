@@ -1,7 +1,10 @@
 """Reference (plain PyTorch) building blocks. Optimized kernels are checked against these."""
 
 import torch
+import torch.nn.functional as F
 from torch import nn
+
+from nanonemo.model.config import ModelConfig
 
 
 class RMSNorm(nn.Module):
@@ -33,3 +36,30 @@ def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.T
     x1, x2 = xf[..., :half], xf[..., half:]
     out = torch.cat((x1 * cos - x2 * sin, x1 * sin + x2 * cos), dim=-1)
     return out.to(x.dtype)
+
+
+class Attention(nn.Module):
+    """Causal grouped-query attention: n_heads query heads share n_kv_heads K/V heads."""
+
+    def __init__(self, cfg: ModelConfig):
+        super().__init__()
+        self.n_heads, self.n_kv_heads, self.head_dim = cfg.n_heads, cfg.n_kv_heads, cfg.head_dim
+        self.wq = nn.Linear(cfg.d_model, cfg.n_heads * cfg.head_dim, bias=False)
+        self.wk = nn.Linear(cfg.d_model, cfg.n_kv_heads * cfg.head_dim, bias=False)
+        self.wv = nn.Linear(cfg.d_model, cfg.n_kv_heads * cfg.head_dim, bias=False)
+        self.wo = nn.Linear(cfg.n_heads * cfg.head_dim, cfg.d_model, bias=False)
+
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+        B, T, _ = x.shape
+        q = self.wq(x).view(B, T, self.n_heads, self.head_dim).transpose(1, 2)  # (B, H, T, hd)
+        k = self.wk(x).view(B, T, self.n_kv_heads, self.head_dim).transpose(1, 2)  # (B, KVH, T, hd)
+        v = self.wv(x).view(B, T, self.n_kv_heads, self.head_dim).transpose(1, 2)
+        q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
+
+        # Query head h uses K/V head h // group: [kv0, kv0, kv0, kv1, ...].
+        group = self.n_heads // self.n_kv_heads
+        k = k.repeat_interleave(group, dim=1)
+        v = v.repeat_interleave(group, dim=1)
+
+        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)  # (B, H, T, hd)
+        return self.wo(y.transpose(1, 2).reshape(B, T, -1))

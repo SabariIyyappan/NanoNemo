@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from nanonemo.model.config import ModelConfig
-from nanonemo.model.layers import RMSNorm, apply_rope, rope_cache
+from nanonemo.model.layers import Attention, RMSNorm, apply_rope, rope_cache
 
 
 def test_config_defaults_match_spec():
@@ -85,3 +85,49 @@ def test_rope_scores_depend_only_on_relative_position():
     # Same offset (m - n = 5) at different absolute positions -> same score.
     assert score(7, 2) == pytest.approx(score(40, 35), rel=1e-4, abs=1e-4)
     assert score(7, 2) != pytest.approx(score(7, 3), rel=1e-4, abs=1e-4)
+
+
+SMALL = ModelConfig(n_layers=2, d_model=96, n_heads=6, n_kv_heads=2, d_ff=256, vocab_size=128, max_seq_len=32)
+
+
+def _attn_inputs(cfg, B=2, T=16, seed=0):
+    torch.manual_seed(seed)
+    attn = Attention(cfg)
+    cos, sin = rope_cache(cfg.head_dim, cfg.max_seq_len)
+    return attn, torch.randn(B, T, cfg.d_model), cos, sin
+
+
+def test_attention_kv_projections_are_smaller():
+    attn = Attention(ModelConfig())
+    assert attn.wq.weight.shape == (768, 768)
+    assert attn.wk.weight.shape == (256, 768)  # 4 KV heads * 64
+    assert attn.wv.weight.shape == (256, 768)
+
+
+def test_attention_matches_explicit_loop_over_heads():
+    # Independent reference: per query head, pick its KV head by index, mask, softmax by hand.
+    cfg = SMALL
+    attn, x, cos, sin = _attn_inputs(cfg)
+    B, T, _ = x.shape
+    hd, group = cfg.head_dim, cfg.n_heads // cfg.n_kv_heads
+    q = apply_rope(attn.wq(x).view(B, T, cfg.n_heads, hd).transpose(1, 2), cos, sin)
+    k = apply_rope(attn.wk(x).view(B, T, cfg.n_kv_heads, hd).transpose(1, 2), cos, sin)
+    v = attn.wv(x).view(B, T, cfg.n_kv_heads, hd).transpose(1, 2)
+    future = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1)
+    heads = []
+    for h in range(cfg.n_heads):
+        kh, vh = k[:, h // group], v[:, h // group]
+        scores = (q[:, h] @ kh.transpose(-1, -2)) / hd**0.5
+        heads.append(scores.masked_fill(future, float("-inf")).softmax(-1) @ vh)
+    expected = attn.wo(torch.stack(heads, dim=2).reshape(B, T, -1))
+    torch.testing.assert_close(attn(x, cos, sin), expected, rtol=1e-5, atol=1e-5)
+
+
+def test_attention_is_causal():
+    attn, x, cos, sin = _attn_inputs(SMALL)
+    y = attn(x, cos, sin)
+    x2 = x.clone()
+    x2[:, 10:] = torch.randn_like(x2[:, 10:])  # change only the future
+    y2 = attn(x2, cos, sin)
+    torch.testing.assert_close(y2[:, :10], y[:, :10])
+    assert not torch.allclose(y2[:, 10:], y[:, 10:])
