@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from nanonemo.model.config import ModelConfig
-from nanonemo.model.layers import Attention, RMSNorm, apply_rope, rope_cache
+from nanonemo.model.layers import MLP, Attention, RMSNorm, apply_rope, rope_cache
 
 
 def test_config_defaults_match_spec():
@@ -131,3 +131,33 @@ def test_attention_is_causal():
     y2 = attn(x2, cos, sin)
     torch.testing.assert_close(y2[:, :10], y[:, :10])
     assert not torch.allclose(y2[:, 10:], y[:, 10:])
+
+
+def test_mlp_param_count_matches_spec():
+    mlp = MLP(ModelConfig())
+    assert sum(p.numel() for p in mlp.parameters()) == 3 * 768 * 2048
+
+
+def test_mlp_matches_formula():
+    torch.manual_seed(0)
+    mlp = MLP(SMALL)
+    x = torch.randn(2, 5, SMALL.d_model)
+    g, u = x @ mlp.w_gate.weight.T, x @ mlp.w_up.weight.T
+    expected = (g * torch.sigmoid(g) * u) @ mlp.w_down.weight.T
+    torch.testing.assert_close(mlp(x), expected, rtol=1e-5, atol=1e-5)
+
+
+def test_mlp_closed_gate_blocks_output():
+    # silu(0) = 0, so a zero gate zeroes the output no matter what `up` computes.
+    mlp = MLP(SMALL)
+    with torch.no_grad():
+        mlp.w_gate.weight.zero_()
+    assert torch.count_nonzero(mlp(torch.randn(2, 5, SMALL.d_model))) == 0
+
+
+def test_mlp_acts_on_each_token_independently():
+    torch.manual_seed(0)
+    mlp = MLP(SMALL)
+    x = torch.randn(1, 8, SMALL.d_model)
+    per_token = torch.cat([mlp(x[:, t : t + 1]) for t in range(8)], dim=1)
+    torch.testing.assert_close(mlp(x), per_token, rtol=1e-5, atol=1e-5)

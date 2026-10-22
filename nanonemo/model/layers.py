@@ -63,3 +63,16 @@ class Attention(nn.Module):
 
         y = F.scaled_dot_product_attention(q, k, v, is_causal=True)  # (B, H, T, hd)
         return self.wo(y.transpose(1, 2).reshape(B, T, -1))
+
+
+class MLP(nn.Module):
+    """SwiGLU feed-forward: down(silu(gate(x)) * up(x))."""
+
+    def __init__(self, cfg: ModelConfig):
+        super().__init__()
+        self.w_gate = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)
+        self.w_up = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)
+        self.w_down = nn.Linear(cfg.d_ff, cfg.d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.w_down(F.silu(self.w_gate(x)) * self.w_up(x))
