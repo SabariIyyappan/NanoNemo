@@ -72,3 +72,17 @@ def iter_jsonl_zstd(path: Path) -> Iterator[dict]:
         for line in io.TextIOWrapper(reader, encoding="utf-8"):
             record = json.loads(line)
             yield {"id": record["warc_record_id"], "text": record["text"]}
+
+
+def round_robin(iterators: list[Iterator[dict]]) -> Iterator[dict]:
+    """One item from each iterator in turn. With a token budget that stops early,
+    this trims every source file (crawl era) equally instead of dropping the last ones."""
+    active = list(iterators)
+    while active:
+        still_active = []
+        for it in active:
+            item = next(it, None)
+            if item is not None:
+                yield item
+                still_active.append(it)
+        active = still_active

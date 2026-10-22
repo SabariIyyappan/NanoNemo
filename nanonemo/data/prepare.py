@@ -190,7 +190,7 @@ def main() -> None:
         source = {"kind": "hf_sample", "repo_id": args.repo_id, "path": args.hf_path}
     else:
         from nanonemo.data.shard import file_sha256
-        from nanonemo.data.sources import download, iter_jsonl_zstd, nemotron_cc_paths, select_evenly
+        from nanonemo.data.sources import download, iter_jsonl_zstd, nemotron_cc_paths, round_robin, select_evenly
 
         paths = select_evenly(nemotron_cc_paths(args.cc_quality, "actual"), args.cc_files)
         local = []
@@ -205,7 +205,7 @@ def main() -> None:
             "kind2": "actual",
             "files": [{"path": p, "bytes": f.stat().st_size, "sha256": file_sha256(f)} for p, f in zip(paths, local)],
         }
-        docs = (doc for f in local for doc in iter_jsonl_zstd(f))
+        docs = round_robin([iter_jsonl_zstd(f) for f in local])
 
     manifest = prepare(
         docs,

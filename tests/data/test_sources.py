@@ -2,7 +2,7 @@ import json
 
 import zstandard
 
-from nanonemo.data.sources import iter_jsonl_zstd, select_evenly
+from nanonemo.data.sources import iter_jsonl_zstd, round_robin, select_evenly
 
 
 def test_select_evenly_spans_the_whole_list():
@@ -21,3 +21,8 @@ def test_iter_jsonl_zstd_streams_records(tmp_path):
     docs = list(iter_jsonl_zstd(path))
     assert [d["id"] for d in docs] == [r["warc_record_id"] for r in records]
     assert docs[123]["text"] == records[123]["text"]
+
+
+def test_round_robin_interleaves_and_drains_unequal_sources():
+    a, b, c = iter([1, 2, 3]), iter([10]), iter([100, 200])
+    assert list(round_robin([a, b, c])) == [1, 10, 100, 2, 200, 3]
