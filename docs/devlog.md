@@ -26,3 +26,12 @@ Short notes written while building: what we tried, what surprised us, and the nu
 - Result: **2,415,765,275 train tokens** (25 shards) and **9,481,778 val tokens** (1 shard), 4.6 GB on disk. All 26 shards re-verified against the manifest's checksums.
 - Train came in at 2.42B, not exactly 2.5B: the 12 downloaded files ran out of documents before the budget was reached (round-robin drained them evenly, then the source was exhausted). Still well above the spec's 2B-minimum fallback, so kept as is rather than fetching more files.
 - Uploaded as a **private** Kaggle dataset `sabariiyyappand/nanonemo-nemotron-cc` (26 shards + manifest.json, 4.6 GB). Verified: all 27 files present, sizes match the local copies exactly, dataset status "ready", and the dataset page 404s when fetched unauthenticated (confirms it's private, not public).
+
+## M2: reference model
+
+- Built bottom-up, one tested block at a time: RMSNorm → RoPE → GQA attention → SwiGLU MLP → pre-norm block → full model. Each block is checked against an independently written reference: the formula by hand, `F.rms_norm`, a complex-number RoPE, and a per-head attention loop that indexes K/V head `h // 3` instead of repeating it.
+- RMSNorm reduces in FP32. A GPU test feeds FP16 inputs of 1000 (x² = 1e6, past FP16's max of 65504); without the upcast the output collapses to 0.
+- RoPE uses the rotate-half pairing. A test checks the defining property: the q·k score at positions (7, 2) equals the score at (40, 35).
+- **Parameter count: 114,150,144** (75,516,672 non-embedding), slightly under the "≈ 115–125M" target because GQA shrinks K/V and the embedding is tied. Architecture kept as specified (see decisions.md).
+- **Surprise:** the initial loss was 10.99, not ln(50304) = 10.83, and the first version of the test failed. This isn't a bug: the unit-RMS final norm times the tied embedding (std 0.02) gives logits with std 0.02·√768 ≈ 0.55, which adds about σ²/2 = 0.15 nats. The test now derives the expected value.
+- Overfit one batch (AdamW, no weight decay, 100 steps): the small config on CPU goes 4.87 → 0.009 in about 1 s; the full model on the RTX 2070 Super goes 10.95 → 0.004 in 9 s (FP32, B=4, T=128, 2.5 GB peak).
