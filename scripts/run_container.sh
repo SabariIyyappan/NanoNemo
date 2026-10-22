@@ -29,6 +29,7 @@ exec docker run --rm "${TTY_FLAGS[@]}" \
     --user "$(id -u):$(id -g)" \
     -e HOME=/home/dev \
     -e PYTHONPATH=/workspace/nanonemo \
+    -e TIKTOKEN_CACHE_DIR=/home/dev/.cache/tiktoken \
     -v "$CACHE_HOME":/home/dev \
     -v "$REPO":/workspace/nanonemo \
     "$IMAGE" "$@"
