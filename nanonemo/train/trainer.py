@@ -13,6 +13,7 @@ from nanonemo.model.model import NanoNemo
 from nanonemo.train.config import TrainConfig, dump_config
 from nanonemo.train.optim import build_optimizer, lr_at
 from nanonemo.utils.env import git_info
+from nanonemo.utils.mfu import flops_per_token, mfu, peak_tflops
 
 
 @torch.no_grad()
@@ -25,6 +26,21 @@ def evaluate(model: NanoNemo, loader: TokenLoader, n_batches: int) -> float:
         total += model(x, y)[1].item()
     model.train()
     return total / n_batches
+
+
+def train_step(model: NanoNemo, opt: torch.optim.Optimizer, loader: TokenLoader, accum: int, grad_clip: float):
+    """One optimizer step over `accum` micro-batches. Returns (mean loss, pre-clip grad norm)."""
+    loss_sum = 0.0
+    for _ in range(accum):
+        x, y = loader.next_batch()
+        _, loss = model(x, y)
+        # Dividing by accum makes the summed .grad the gradient of the mean loss.
+        (loss / accum).backward()
+        loss_sum += loss.item()
+    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip).item()
+    opt.step()
+    opt.zero_grad(set_to_none=True)
+    return loss_sum / accum, grad_norm
 
 
 def train(
@@ -45,6 +61,9 @@ def train(
     train_loader = TokenLoader(cfg.data_dir, "train", cfg.seq_len, cfg.micro_batch, seed=cfg.seed, device=device)
     val_loader = TokenLoader(cfg.data_dir, "val", cfg.seq_len, cfg.micro_batch, seed=cfg.seed, device=device)
     accum, total_steps = cfg.grad_accum(), cfg.total_steps
+    # MFU against the spec's reference peak (FP16 tensor cores), whatever precision this run uses.
+    peak = peak_tflops(torch.cuda.get_device_name()) if device == "cuda" else None
+    flops_tok = flops_per_token(model_cfg, cfg.seq_len)
 
     history: list[dict] = []
     metrics_file = (out_dir / "metrics.jsonl").open("w")
@@ -67,16 +86,7 @@ def train(
         for group in opt.param_groups:
             group["lr"] = lr
 
-        loss_sum = 0.0
-        for _ in range(accum):
-            x, y = train_loader.next_batch()
-            _, loss = model(x, y)
-            # Dividing by accum makes the summed .grad the gradient of the mean loss.
-            (loss / accum).backward()
-            loss_sum += loss.item()
-        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip).item()
-        opt.step()
-        opt.zero_grad(set_to_none=True)
+        loss, grad_norm = train_step(model, opt, train_loader, accum, cfg.grad_clip)
 
         is_last = step == total_steps - 1
         if step % cfg.log_every == 0 or is_last:
@@ -84,12 +94,14 @@ def train(
                 torch.cuda.synchronize()
             now = time.perf_counter()
             record = {
-                "step": step, "loss": loss_sum / accum, "lr": lr, "grad_norm": grad_norm,
+                "step": step, "loss": loss, "lr": lr, "grad_norm": grad_norm,
                 "tokens": (step + 1) * cfg.global_batch_tokens,
                 "tokens_per_s": (step - last_logged) * cfg.global_batch_tokens / (now - t_last),
             }
             if device == "cuda":
                 record["peak_mem_gb"] = torch.cuda.max_memory_allocated() / 2**30
+            if peak:
+                record["mfu"] = mfu(record["tokens_per_s"], flops_tok, peak["fp16_tc"])
             t_last, last_logged = now, step
             log(record)
         if (step + 1) % cfg.eval_every == 0 or is_last:

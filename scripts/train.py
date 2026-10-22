@@ -17,6 +17,8 @@ def print_record(r: dict) -> None:
         )
         if "peak_mem_gb" in r:
             line += f" | {r['peak_mem_gb']:.2f} GB"
+        if "mfu" in r:
+            line += f" | MFU {r['mfu']:.1%}"
         print(line, flush=True)
     elif "val_loss" in r:
         print(f"step {r['step']:5d} | val_loss {r['val_loss']:.4f}", flush=True)
