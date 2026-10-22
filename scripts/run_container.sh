@@ -19,9 +19,13 @@ docker build -q -t "$IMAGE" "$REPO/docker" >/dev/null
 TTY_FLAGS=()
 [ -t 0 ] && TTY_FLAGS=(-it)
 
-# Kaggle API credentials, read-only, only if the user has set them up.
+# Kaggle API credentials, only if the user has set them up:
+#   - new CLI (2.x): KAGGLE_API_TOKEN env var, or ~/.kaggle/access_token
+#   - old CLI (1.x): ~/.kaggle/kaggle.json
 EXTRA_MOUNTS=()
 [ -d "$HOME/.kaggle" ] && EXTRA_MOUNTS+=(-v "$HOME/.kaggle":/home/dev/.kaggle:ro)
+EXTRA_ENV=()
+[ -n "${KAGGLE_API_TOKEN:-}" ] && EXTRA_ENV+=(-e KAGGLE_API_TOKEN)
 
 # --ipc=host and the ulimits are NGC's recommended flags for PyTorch
 # (shared memory for data loader workers, pinned memory, deep stacks).
@@ -36,5 +40,5 @@ exec docker run --rm "${TTY_FLAGS[@]}" \
     -e TIKTOKEN_CACHE_DIR=/home/dev/.cache/tiktoken \
     -v "$CACHE_HOME":/home/dev \
     -v "$REPO":/workspace/nanonemo \
-    "${EXTRA_MOUNTS[@]}" \
+    "${EXTRA_MOUNTS[@]}" "${EXTRA_ENV[@]}" \
     "$IMAGE" "$@"

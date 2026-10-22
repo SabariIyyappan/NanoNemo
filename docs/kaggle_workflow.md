@@ -3,12 +3,21 @@
 Kaggle provides 2× T4 notebooks with time-limited sessions. Data preparation happens locally, so no Kaggle GPU time is spent on it. Training resumes from checkpoints across sessions.
 
 ## One-time setup
-1. Kaggle → Settings → API → **Create New Token**. This downloads `kaggle.json`.
-2. Put it on the host machine:
-   ```bash
-   mkdir -p ~/.kaggle && mv ~/Downloads/kaggle.json ~/.kaggle/ && chmod 600 ~/.kaggle/kaggle.json
-   ```
-   `scripts/run_container.sh` mounts `~/.kaggle` read-only into the container.
+Kaggle's CLI (2.x) authenticates with a single token rather than the older `kaggle.json` key pair:
+
+1. Go to https://www.kaggle.com/settings/api and click **Generate New Token**. Copy the token string shown (it is not downloaded as a file this time).
+2. Give it to the CLI in *one* of these ways:
+   - **Environment variable** (simplest; `scripts/run_container.sh` forwards it into the container if it's set in your shell):
+     ```bash
+     export KAGGLE_API_TOKEN=xxxxxxxxxxxxxx
+     ```
+   - **Token file** (persists across shells without re-exporting):
+     ```bash
+     mkdir -p ~/.kaggle && echo -n xxxxxxxxxxxxxx > ~/.kaggle/access_token && chmod 600 ~/.kaggle/access_token
+     ```
+   `scripts/run_container.sh` mounts `~/.kaggle` read-only into the container either way.
+
+   (The legacy `~/.kaggle/kaggle.json` from "Create New Token" on older accounts still works too, if that's what your account shows instead.)
 
 ## Uploading the token dataset
 ```bash

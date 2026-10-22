@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # Upload a prepared token dataset (shards + manifest.json) to Kaggle as a PRIVATE dataset.
 #   scripts/run_container.sh scripts/kaggle_upload_data.sh data/nemotron_cc nanonemo-nemotron-cc
-# Needs ~/.kaggle/kaggle.json on the host (Kaggle -> Settings -> API -> Create New Token).
+# Needs Kaggle credentials on the host, either:
+#   - current CLI (2.x): KAGGLE_API_TOKEN env var, or a token saved to ~/.kaggle/access_token
+#   - legacy CLI (1.x):  ~/.kaggle/kaggle.json
+# Generate a token at https://www.kaggle.com/settings/api ("Generate New Token").
 set -euo pipefail
 
 DATA_DIR=${1:?usage: kaggle_upload_data.sh <data_dir> <dataset-slug>}
 SLUG=${2:?usage: kaggle_upload_data.sh <data_dir> <dataset-slug>}
-USER_NAME=$(python -c "import json, os; print(json.load(open(os.path.expanduser('~/.kaggle/kaggle.json')))['username'])")
+USER_NAME=$(python -c "
+from kaggle.api.kaggle_api_extended import KaggleApi
+api = KaggleApi()
+api.authenticate()
+print(api.config_values['username'])
+")
 
 # Upload only the shards and the manifest, never the raw downloads.
 STAGE="$DATA_DIR/.kaggle_stage"
