@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from nanonemo.model.config import ModelConfig
-from nanonemo.model.layers import RMSNorm
+from nanonemo.model.layers import RMSNorm, apply_rope, rope_cache
 
 
 def test_config_defaults_match_spec():
@@ -45,3 +45,43 @@ def test_rmsnorm_fp16_large_inputs_do_not_overflow():
     assert y.dtype == torch.float16
     assert torch.isfinite(y).all()
     torch.testing.assert_close(y, torch.ones_like(y))
+
+
+def test_rope_position_zero_is_identity():
+    cos, sin = rope_cache(64, 16)
+    x = torch.randn(2, 3, 1, 64)
+    torch.testing.assert_close(apply_rope(x, cos, sin), x)
+
+
+def test_rope_preserves_vector_length():
+    cos, sin = rope_cache(64, 128)
+    x = torch.randn(2, 3, 128, 64)
+    torch.testing.assert_close(apply_rope(x, cos, sin).norm(dim=-1), x.norm(dim=-1))
+
+
+def test_rope_matches_complex_rotation():
+    # Independent reference: pair (x[i], x[i+32]) as a complex number, multiply by e^{i*m*theta_i}.
+    head_dim, T = 64, 32
+    cos, sin = rope_cache(head_dim, T)
+    x = torch.randn(1, 2, T, head_dim, dtype=torch.float64)
+    half = head_dim // 2
+    theta = 10000.0 ** (-torch.arange(0, head_dim, 2, dtype=torch.float64) / head_dim)
+    angles = torch.outer(torch.arange(T, dtype=torch.float64), theta)
+    z = torch.complex(x[..., :half], x[..., half:]) * torch.polar(torch.ones_like(angles), angles)
+    expected = torch.cat((z.real, z.imag), dim=-1)
+    torch.testing.assert_close(apply_rope(x, cos, sin), expected, rtol=1e-5, atol=1e-5)
+
+
+def test_rope_scores_depend_only_on_relative_position():
+    cos, sin = rope_cache(64, 64)
+    q, k = torch.randn(64), torch.randn(64)
+
+    def score(m, n):
+        seq = torch.zeros(1, 1, 64, 64)
+        qs, ks = seq.clone(), seq.clone()
+        qs[0, 0, m], ks[0, 0, n] = q, k
+        return (apply_rope(qs, cos, sin)[0, 0, m] @ apply_rope(ks, cos, sin)[0, 0, n]).item()
+
+    # Same offset (m - n = 5) at different absolute positions -> same score.
+    assert score(7, 2) == pytest.approx(score(40, 35), rel=1e-4, abs=1e-4)
+    assert score(7, 2) != pytest.approx(score(7, 3), rel=1e-4, abs=1e-4)

@@ -44,3 +44,9 @@ Nemotron-CC has already been globally deduplicated and quality-filtered upstream
 - Synthetic rephrasings (`kind=synthetic`) are excluded, so results reflect training on real web text.
 - Nemotron-CC-v2 on Hugging Face requires manual access approval. It can be swapped in later through config.
 - Development uses the ungated `nvidia/Nemotron-Pretraining-Dataset-sample`.
+
+## RoPE uses the rotate-half pairing
+- Dimension `i` is rotated together with `i + head_dim/2` (the Hugging Face Llama layout), not with `i + 1` (Meta's original interleaved layout).
+- The two are mathematically equivalent, but checkpoints are not interchangeable between them.
+- Rotate-half reads two contiguous halves of each head, which keeps the later Triton RoPE kernel simple.
+- The cos/sin tables and the rotation are computed in FP32, then the result is cast back to the input dtype.
