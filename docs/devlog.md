@@ -100,3 +100,22 @@ Results (`python scripts/ladder_table.py rtx-2070-super`), seq 1024, micro-batch
 - MFU at S3 is 64.8% of the FP16 tensor-core peak *at the rated 1380 MHz boost*. The GPU actually ran at ~1600 MHz, so against the peak at the clock it really ran, it's ~56%.
 - **Laptop throttling, caught by the harness:** the first ladder pass ran S0/S1 held at the 1140 MHz base clock (80–86 W of 115 W, no reason reported), and the second pass had S2 and S3 trials under a SW thermal slowdown (memory clock 6801 → 810 MHz, ~30 W) while the GPU read under 50 °C. The harness now flags a trial below the rated boost clock, and `scripts/run_ladder.sh` re-runs flagged stages after a rest. Every row above is unflagged (lowest trial clock 1470–1620 MHz). Discarded attempts are kept locally in `runs/`.
 - T4 rows (Kaggle) not run yet: the instructions are in `docs/kaggle_workflow.md`. nsys traces per stage are also still to do.
+
+## M4: the same ladder on a Kaggle T4
+
+- One T4 of Kaggle's 2× T4 notebook, torch 2.11.0+cu128 (Kaggle's image; the laptop runs NGC's 2.10). Same configs, same data, run with `--data-dir` pointing at the attached dataset. No trial flagged.
+
+| Stage | Tokens/s (min–max) | MFU | Peak mem alloc / reserved | Loss @ step | Δ vs previous | Warmup | SM clock (lowest trial median) |
+|---|---|---|---|---|---|---|---|
+| s0_fp32 | 2,731 (2,605–2,849) | 3.4% | 5.86 / 6.30 GB | 6.767 @ 155 | — | 29 s | 735 MHz |
+| s1_fp16 | 6,294 (6,286–6,295) | 7.7% | 5.55 / 5.89 GB | 6.775 @ 155 | 2.30× | 14 s | 825 MHz |
+| s2_mem_efficient | 11,224 (11,217–11,288) | 13.8% | 4.30 / 4.69 GB | 6.772 @ 155 | 1.78× | 9 s | 840 MHz |
+| s3_compile | 15,509 (15,459–15,867) | 19.0% | 3.25 / 3.67 GB | 6.772 @ 155 | 1.38× | 37 s | 705 MHz |
+| s4_cudagraphs | 15,370 (15,346–15,713) | 18.9% | 1.99 / 4.05 GB | 6.769 @ 155 | 0.99× | 34 s | 720 MHz |
+
+- **Same loss at step 155 as the laptop** (6.767–6.775 on both GPUs, every stage), across two GPUs and two torch versions.
+- **The T4 is power-limited to about half its boost clock.** It ran at 705–855 MHz against a rated 1590 MHz boost, drawing 64–66 W of its 70 W limit at 100% utilization, with only the power-cap reason set (no thermal flag at 77–82 °C). The 65 TFLOP/s datasheet peak assumes the boost clock, so MFU against it reads low (19% at S3). Against the peak at the clock it actually ran (~30 TFLOP/s at 735 MHz), S3 reaches ~41%.
+- FP16 gains more on the T4 than on the laptop (2.30× vs 1.75×): the T4's FP16 tensor-core peak is 8× its FP32 peak, against 4× on GeForce Turing, which runs FP32-accumulate at half rate.
+- CUDA graphs: no gain here either (0.99×). The T4 is slower than the laptop, so the GPU is even further ahead of the CPU's kernel launches.
+- T4 vs laptop at S3: 15,509 vs 22,994 tok/s (0.67×), with identical memory use. The T4's higher datasheet peak doesn't help when its power limit holds it at ~735 MHz.
+- Kaggle detail: the dataset now mounts at `/kaggle/input/datasets/<owner>/<slug>/`, not `/kaggle/input/<slug>/`; `docs/kaggle_workflow.md` is updated.
