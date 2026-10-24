@@ -73,3 +73,30 @@ Short notes written while building: what we tried, what surprised us, and the nu
 - The SM clock runs *above* the 1380 MHz rated boost (~1515 MHz median) and swings ±15% sample to sample, while power sits at ~111 W of the 115 W limit and throughput stays flat. That is power-limited boost, not throttling. The first throttle rule (any sample >10% below the median) flagged two trials for it; the rule now flags only a sustained drop (trial median >10% below the median of trials) or a thermal/hardware slowdown reason.
 - No 4× slowdown bursts like the M2 smoke run's: clocks drifted down only ~2% as the GPU warmed from 41 to 73 °C. The M2 bursts remain unexplained; the trainer now logs MFU, and any recurrence will show up in the per-trial clock record.
 - The kernel microbenchmark helper (`benchmarks/kernels/`) moves to M5a, where the first kernel to benchmark arrives.
+
+## M4: ladder stages S1–S4 on the RTX 2070 Super
+
+- New switches, each tested for parity against the previous stage: `attn_backend` (math | mem_efficient, pinned with `sdpa_kernel`), `precision` (fp32 | fp16 + GradScaler | bf16), `compile` (default | max-autotune | reduce-overhead). One stage config per rung in `configs/stages/`; a test checks consecutive configs differ by exactly one setting.
+- Parity tests (GPU): mem-efficient vs math attention, output and input-gradient, FP32 within 1e-5 and FP16 within 2e-3; FP16 AMP vs FP32 loss over 40 training steps within 2%; compiled (default and reduce-overhead) vs eager over 15 steps within 2%.
+- **Pinning the backend mattered.** S0 with math attention runs at 5,468 tok/s and 5.86 GB; the M3 check, with PyTorch choosing the backend, ran at 6,254 tok/s and 4.74 GB. So the automatic choice was already the memory-efficient kernel, even in FP32, and S0 was not the reference the ladder defines.
+- **Bug caught by the parity test:** CUDA graphs + gradient accumulation crashed with "accessing tensor output of CUDAGraphs that has been overwritten". Autograd adopted the first micro-batch's gradient (which lives in the graph's memory pool) as `.grad`, and the next replay overwrote it. Fix: with CUDA graphs on, `.grad` is allocated once outside the pool and zeroed in place. `cudagraph_mark_step_begin()` alone did not fix it.
+- The training step now sums the loss on the GPU and syncs once per optimizer step instead of once per micro-batch.
+
+Results (`python scripts/ladder_table.py rtx-2070-super`), seq 1024, micro-batch 2, 16,384-token steps, 3 × 50 timed steps after 5 warmup steps:
+
+| Stage | Tokens/s (min–max) | MFU | Peak mem alloc / reserved | Loss @ step | Δ vs previous | Warmup | SM clock (lowest trial median) |
+|---|---|---|---|---|---|---|---|
+| s0_fp32 | 5,468 (5,453–5,549) | 15.4% | 5.86 / 6.30 GB | 6.772 @ 155 | — | 16 s | 1470 MHz |
+| s1_fp16 | 9,563 (9,519–9,579) | 27.0% | 5.55 / 5.89 GB | 6.775 @ 155 | 1.75× | 9 s | 1590 MHz |
+| s2_mem_efficient | 16,274 (16,267–16,319) | 45.9% | 4.30 / 4.69 GB | 6.774 @ 155 | 1.70× | 6 s | 1620 MHz |
+| s3_compile | 22,994 (22,901–23,794) | 64.8% | 3.25 / 3.67 GB | 6.767 @ 155 | 1.41× | 24 s | 1590 MHz |
+| s4_cudagraphs | 22,506 (22,283–22,878) | 63.5% | 1.99 / 4.05 GB | 6.771 @ 155 | 0.98× | 27 s | 1605 MHz |
+
+- **4.2× from S0 to S3** (5,468 → 22,994 tok/s), at an unchanged loss: all five stages reach 6.767–6.775 at step 155 from the same init and data. FP16 never overflowed in 155 steps (the loss scale stayed at its initial 65,536).
+- S1 FP16: 1.75×. The matmuls move to tensor cores, but math attention still writes the full 1024 × 1024 score matrix per head; memory barely drops (5.86 → 5.55 GB).
+- S2 mem-efficient attention: 1.70× and −1.25 GB. The fused kernel never materializes the scores.
+- S3 torch.compile: 1.41× and −1.05 GB. Inductor fuses RMSNorm, RoPE, SwiGLU and the residual adds into Triton kernels. Those ops are memory-bound and were each a separate read/write of the activations, so fusing saves both time and saved-activation memory. Attention stays on the CUTLASS kernel (Inductor reports it as a fallback kernel). Compile adds ~18 s to warmup.
+- S4 CUDA graphs: **no gain** (0.98×, within the spread). The GPU was 100% busy and at its power limit (~113 W) in every stage: at 2,048 tokens per micro-batch the kernels are long enough that the CPU launches them faster than the GPU runs them, so there is no launch overhead for graphs to remove. Graphs should matter at small micro-batches or on a faster GPU. Kept as a stage; not used by default. Its "allocated" peak (1.99 GB) is misleading, since the graph pool is reserved during warmup; reserved (4.05 GB) is the fair number, 0.38 GB above S3, close to the ~0.43 GB of FP32 gradients that now stay allocated.
+- MFU at S3 is 64.8% of the FP16 tensor-core peak *at the rated 1380 MHz boost*. The GPU actually ran at ~1600 MHz, so against the peak at the clock it really ran, it's ~56%.
+- **Laptop throttling, caught by the harness:** the first ladder pass ran S0/S1 held at the 1140 MHz base clock (80–86 W of 115 W, no reason reported), and the second pass had S2 and S3 trials under a SW thermal slowdown (memory clock 6801 → 810 MHz, ~30 W) while the GPU read under 50 °C. The harness now flags a trial below the rated boost clock, and `scripts/run_ladder.sh` re-runs flagged stages after a rest. Every row above is unflagged (lowest trial clock 1470–1620 MHz). Discarded attempts are kept locally in `runs/`.
+- T4 rows (Kaggle) not run yet: the instructions are in `docs/kaggle_workflow.md`. nsys traces per stage are also still to do.
