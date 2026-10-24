@@ -23,14 +23,18 @@ def test_steady_clocks_are_not_flagged():
     assert throttle_flags(trials) == []
 
 
-def test_clock_drop_and_thermal_slowdown_are_flagged():
+def test_brief_dips_are_not_flagged():
+    # Power-limited boost: the clock swings sample to sample, the median holds.
+    swinging = summarize([_sample(sm) for sm in (1530, 1335, 1785, 1500, 1520)])
+    assert throttle_flags([swinging] * 3) == []
+
+
+def test_sustained_clock_drop_and_thermal_slowdown_are_flagged():
     steady = summarize([_sample(1755)] * 5)
-    dipped = summarize([_sample(1755)] * 4 + [_sample(1200)])
+    dropped = summarize([_sample(1755)] * 2 + [_sample(1200)] * 3)
     hot = summarize([_sample(1755, temp=87, reasons=0x20 | 0x4)] * 5)
-    flags = throttle_flags([steady, dipped, hot])
-    assert len(flags) == 2
-    assert flags[0].startswith("trial 1: SM clock fell to 1200")
-    assert flags[1] == "trial 2: sw_thermal"
+    flags = throttle_flags([steady, steady, dropped, hot])
+    assert flags == ["trial 2: median SM clock 1200 MHz (median of trials 1755)", "trial 3: sw_thermal"]
 
 
 def test_no_samples_is_flagged():

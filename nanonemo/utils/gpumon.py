@@ -101,8 +101,10 @@ def summarize(samples: list[dict]) -> dict:
 def throttle_flags(trials: list[dict], tol: float = 0.10) -> list[str]:
     """Reasons to distrust a set of trials (summaries from `summarize`); empty means clean.
 
-    Flags a trial whose lowest SM clock fell more than `tol` below the median clock
-    across all trials, and any trial that reported a thermal/hardware slowdown.
+    Flags a trial whose median SM clock is more than `tol` below the median across all
+    trials (a sustained drop), and any trial that reported a thermal/hardware slowdown.
+    Single low samples are not flagged: at its power limit the clock swings by ~25%
+    every few hundred ms (1335-1785 MHz on the RTX 2070 Super) with steady throughput.
     """
     sampled = [t for t in trials if t["n_samples"]]
     if not sampled:
@@ -113,8 +115,8 @@ def throttle_flags(trials: list[dict], tol: float = 0.10) -> list[str]:
         if not t["n_samples"]:
             flags.append(f"trial {i}: no GPU samples")
             continue
-        if t["sm_mhz"]["min"] < (1 - tol) * ref:
-            flags.append(f"trial {i}: SM clock fell to {t['sm_mhz']['min']} MHz (median of trials {ref:.0f})")
+        if t["sm_mhz"]["median"] < (1 - tol) * ref:
+            flags.append(f"trial {i}: median SM clock {t['sm_mhz']['median']:.0f} MHz (median of trials {ref:.0f})")
         if t["slowdown_reasons"]:
             flags.append(f"trial {i}: {', '.join(t['slowdown_reasons'])}")
     return flags

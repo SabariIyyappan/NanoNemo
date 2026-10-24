@@ -56,3 +56,20 @@ Short notes written while building: what we tried, what surprised us, and the nu
 - Throughput: median 6,109 tok/s, peak memory 4.74 GB, about 68 min wall time.
 - **Unexplained:** between steps 90 and 227, bursts of 3–4 consecutive steps every ~15 steps ran at ~1.5–2k tok/s (4× slower); steps 228–304 were steady again. Not eval (excluded from the timing). Suspects: laptop GPU thermal or power throttling, or another process on the GPU. Clocks and temperature weren't logged, so the benchmark harness (M3) will record them alongside throughput.
 - M2 acceptance met: param count printed, overfit-one-batch passes, the 20M-token smoke run's loss decreases, W&B logging works.
+
+## M3: benchmark harness
+
+- `scripts/bench_train.py` times the trainer's own `train_step` on real data: 5 warmup steps (timed, but excluded), then 3 trials of 50 optimizer steps, each step bracketed by CUDA events. It writes median and min/max across trials, MFU, peak memory, per-step times, GPU clock/temperature/power per trial, the resolved config and the full environment to `results/ladder/<gpu>/<config>.json`.
+- MFU counts the tied lm_head matmul (the spec's "non-embedding" formula would drop ~29% of the real FLOPs): 798.0 MFLOP per token at seq 1024. Peaks: RTX 2070 Super laptop 28.3 TFLOP/s FP16 tensor (FP32 accumulate, half rate on GeForce Turing) and 7.07 FP32; see decisions.md.
+- Harness check, S0 FP32 at micro-batch 2 (SDPA backend left to PyTorch's automatic choice, 16k-token steps):
+
+| trial | tok/s | SM clock median (min–max) | temp max |
+|---|---|---|---|
+| 0 | 6,364 | 1530 (1365–1785) MHz | 67 °C |
+| 1 | 6,222 | 1515 (1335–1770) MHz | 71 °C |
+| 2 | 6,254 | 1500 (1335–1695) MHz | 73 °C |
+
+- Median 6,254 tok/s (spread 2.3%), 4.99 TFLOP/s achieved: **17.6% MFU** against the FP16 tensor-core peak, 70.6% of the FP32 peak. Peak memory 4.74 GB allocated (5.18 reserved), identical to the M2 smoke run. Warmup 12.9 s for 5 steps.
+- The SM clock runs *above* the 1380 MHz rated boost (~1515 MHz median) and swings ±15% sample to sample, while power sits at ~111 W of the 115 W limit and throughput stays flat. That is power-limited boost, not throttling. The first throttle rule (any sample >10% below the median) flagged two trials for it; the rule now flags only a sustained drop (trial median >10% below the median of trials) or a thermal/hardware slowdown reason.
+- No 4× slowdown bursts like the M2 smoke run's: clocks drifted down only ~2% as the GPU warmed from 41 to 73 °C. The M2 bursts remain unexplained; the trainer now logs MFU, and any recurrence will show up in the per-trial clock record.
+- The kernel microbenchmark helper (`benchmarks/kernels/`) moves to M5a, where the first kernel to benchmark arrives.
