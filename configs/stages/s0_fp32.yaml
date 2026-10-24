@@ -3,10 +3,12 @@
 # so only the stage's own change differs. The global batch is 16k tokens (8 micro-batches
 # of 2), not the main run's 0.5M: throughput per token is the same, and 50 steps x 3 trials
 # then takes minutes instead of hours.
-model: {}  # spec defaults (nanonemo/model/config.py)
+model:
+  attn_backend: math    # plain matmul + softmax, materializes the T x T scores
 train:
   data_dir: data/nemotron_cc
   seq_len: 1024
   micro_batch: 2          # FP32 eager: micro 4 OOMs on 8 GB
   global_batch_tokens: 16384
   peak_lr: 6.0e-4
+  precision: fp32

@@ -25,8 +25,16 @@ class TrainConfig:
     eval_every: int = 50  # optimizer steps
     eval_batches: int = 20
     log_every: int = 1
+    precision: str = "fp32"  # fp32 | fp16 (autocast + GradScaler; Turing has no BF16) | bf16 (autocast)
+    compile: str | None = None  # None (eager) | default | max-autotune | reduce-overhead (+ CUDA graphs)
     wandb_project: str | None = None  # None: console + metrics.jsonl only
     wandb_run_name: str | None = None
+
+    def __post_init__(self):
+        if self.precision not in ("fp32", "fp16", "bf16"):
+            raise ValueError(f"unknown precision {self.precision!r}")
+        if self.compile not in (None, "default", "max-autotune", "reduce-overhead"):
+            raise ValueError(f"unknown compile mode {self.compile!r}")
 
     def grad_accum(self, world_size: int = 1) -> int:
         per_micro = self.micro_batch * self.seq_len * world_size

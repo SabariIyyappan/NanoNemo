@@ -13,6 +13,7 @@ _KEYS = {
     "tokens_per_s": "perf/tokens_per_s",
     "peak_mem_gb": "perf/peak_mem_gb",
     "mfu": "perf/mfu",
+    "loss_scale": "train/loss_scale",
     "val_loss": "val/loss",
 }
 

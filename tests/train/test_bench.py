@@ -39,7 +39,7 @@ def test_benchmark_on_cpu(tmp_path):
 
 
 def test_stage_configs_load():
-    model_cfg, cfg = load_config("configs/stages/s0.yaml")
+    model_cfg, cfg = load_config("configs/stages/s0_fp32.yaml")
     assert model_cfg == ModelConfig()
     assert cfg.grad_accum() == 8
 

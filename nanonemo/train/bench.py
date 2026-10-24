@@ -14,10 +14,9 @@ import torch
 
 from nanonemo.data.loader import TokenLoader
 from nanonemo.model.config import ModelConfig
-from nanonemo.model.model import NanoNemo
 from nanonemo.train.config import TrainConfig
 from nanonemo.train.optim import build_optimizer, lr_at
-from nanonemo.train.trainer import train_step
+from nanonemo.train.trainer import AMP_DTYPES, build_model, build_scaler, static_grads, train_step
 from nanonemo.utils.env import capture_env
 from nanonemo.utils.gpumon import GpuMonitor, summarize, throttle_flags
 from nanonemo.utils.mfu import flops_per_token, mfu, peak_tflops
@@ -64,8 +63,9 @@ def benchmark(
     env = capture_env()  # before the run: idle clocks/temperature at the start
 
     torch.manual_seed(cfg.seed)
-    model = NanoNemo(model_cfg).to(device)
+    model, step_model = build_model(model_cfg, cfg, device)
     opt = build_optimizer(model, cfg.peak_lr, cfg.weight_decay)
+    amp_dtype, scaler = AMP_DTYPES[cfg.precision], build_scaler(cfg, device)
     loader = TokenLoader(cfg.data_dir, "train", cfg.seq_len, cfg.micro_batch, seed=cfg.seed, device=device)
     accum = cfg.grad_accum()
     # A short schedule of its own: the LR doesn't change the speed, but a warmup keeps
@@ -79,7 +79,7 @@ def benchmark(
         for group in opt.param_groups:
             group["lr"] = lr_at(step, cfg.peak_lr, total, lr_warmup, cfg.min_lr_ratio)
         step += 1
-        return train_step(model, opt, loader, accum, cfg.grad_clip)
+        return train_step(step_model, opt, loader, accum, cfg.grad_clip, amp_dtype, scaler, static_grads(cfg))
 
     # Warmup: first CUDA context use, cuBLAS heuristics, allocator growth, and (later stages)
     # torch.compile and CUDA-graph capture. Timed, but kept out of the throughput numbers.
@@ -109,6 +109,7 @@ def benchmark(
                 "step_ms": step_ms,
                 "loss_first": losses[0],
                 "loss_last": losses[-1],
+                "loss_scale": scaler.get_scale() if scaler else None,
                 "gpu": summarize(mon.window(t_start, t_end)),
             })
 
