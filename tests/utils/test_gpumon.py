@@ -37,6 +37,14 @@ def test_sustained_clock_drop_and_thermal_slowdown_are_flagged():
     assert flags == ["trial 2: median SM clock 1200 MHz (median of trials 1755)", "trial 3: sw_thermal"]
 
 
+def test_clock_held_below_rated_boost_is_flagged():
+    # A cap over the whole run: every trial agrees, so only the absolute floor catches it.
+    capped = summarize([_sample(1140)] * 5)
+    assert throttle_flags([capped] * 3) == []
+    flags = throttle_flags([capped] * 3, min_mhz=1380)
+    assert flags == [f"trial {i}: median SM clock 1140 MHz is below the rated boost 1380" for i in range(3)]
+
+
 def test_no_samples_is_flagged():
     assert throttle_flags([summarize([])]) == ["no GPU samples"]
 

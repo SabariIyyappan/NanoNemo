@@ -3,7 +3,7 @@ from torch import nn
 
 from nanonemo.model.config import ModelConfig
 from nanonemo.model.model import NanoNemo
-from nanonemo.utils.mfu import flops_per_token, matmul_params, mfu, peak_tflops
+from nanonemo.utils.mfu import flops_per_token, matmul_params, mfu, peak_tflops, rated_boost_mhz
 
 SMALL = ModelConfig(n_layers=2, d_model=64, n_heads=4, n_kv_heads=2, d_ff=128, vocab_size=64, max_seq_len=32)
 
@@ -46,3 +46,9 @@ def test_unknown_gpu_has_no_peak():
 def test_mfu_arithmetic():
     # 10k tok/s at 1 GFLOP/token = 10 TFLOP/s, a quarter of a 40 TFLOP/s peak.
     assert mfu(10_000, 10**9, 40.0) == pytest.approx(0.25)
+
+
+def test_rated_boost_lookup():
+    assert rated_boost_mhz("NVIDIA GeForce RTX 2070 Super") == 1380
+    assert rated_boost_mhz("Tesla T4") is None  # power-limited below boost by design
+    assert rated_boost_mhz("NVIDIA A100-SXM4-80GB") is None

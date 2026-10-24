@@ -53,9 +53,12 @@ def main() -> None:
     parser.add_argument("--trials", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=5, help="untimed steps before the first trial")
     parser.add_argument("--out", help="output JSON path")
+    parser.add_argument("--data-dir", help="override train.data_dir (e.g. the Kaggle input path)")
     args = parser.parse_args()
 
     model_cfg, train_cfg = load_config(args.config)
+    if args.data_dir:
+        train_cfg.data_dir = args.data_dir
     result = benchmark(model_cfg, train_cfg, steps=args.steps, trials=args.trials, warmup_steps=args.warmup)
     result["config_path"] = args.config
 

@@ -81,3 +81,27 @@ Nemotron-CC has already been globally deduplicated and quality-filtered upstream
 - Each step is bracketed by CUDA events. Throughput per trial is its tokens divided by the sum of its step times.
 - Stage benchmark configs (`configs/stages/`) use a 16,384-token global batch (8 micro-batches of 2 at seq 1024) instead of the main run's 0.5M. Throughput per token doesn't depend on the accumulation count, and 150 timed steps take minutes instead of hours.
 - An `nvidia-smi --loop-ms` subprocess samples SM clock, temperature, power and clock-event reasons during each trial. A trial is flagged if its lowest SM clock falls more than 10% below the median clock across trials, or if it reports a thermal or hardware slowdown. The software power cap is not a flag on its own: under full load a laptop GPU sits at its power limit all the time.
+
+## The SDPA backend is pinned, never chosen automatically
+- `F.scaled_dot_product_attention` picks a backend on its own. On Turing that is the memory-efficient kernel whenever the inputs allow it, even in FP32. Left alone, S0 would not be the math reference the ladder defines, and S2 would show no gain.
+- `ModelConfig.attn_backend` (`math` or `mem_efficient`) is applied with `sdpa_kernel(...)`. A pinned backend that can't handle its inputs raises an error rather than silently falling back.
+- FlashAttention (SDPA's `flash` backend) needs sm_80+, so it isn't an option on Turing. Our own CUDA C++ FlashAttention is stage S7.
+
+## Mixed precision on Turing is FP16 + GradScaler
+- Turing has no BF16 tensor cores. FP16's narrow range (max 65504, smallest normal 6e-5) means small gradients underflow, so the loss is scaled up before backward and the gradients scaled back down. A step whose gradients overflowed is skipped and the scale is halved.
+- Gradients are unscaled before clipping, so the clip threshold applies to the true gradient norm.
+- Weights, optimizer state and the residual stream stay FP32. Autocast runs matmuls and attention in FP16, and RMSNorm, RoPE and the loss upcast to FP32 explicitly.
+- `precision: bf16` exists for the L4 stage (no scaler needed: BF16 has FP32's range).
+
+## The training step syncs with the CPU once
+- The per-micro-batch loss is summed on the GPU, and `.item()` is called once per optimizer step. A `.item()` per micro-batch made the CPU wait for the GPU 8 times per step, hiding nothing at S0 but defeating the asynchronous launches that S3 and S4 depend on.
+
+## CUDA graphs keep gradients outside the graph's memory pool
+- `torch.compile(mode="reduce-overhead")` replays captured CUDA graphs, which write their outputs into a private memory pool reused on every replay. With gradient accumulation, autograd adopts the first micro-batch's gradient tensor as `.grad`. That tensor lives in the pool, so the next replay would overwrite it. PyTorch detects this and raises an error.
+- With CUDA graphs on, `.grad` is allocated once as ordinary memory and zeroed in place each step (`zero_grad(set_to_none=False)`), so each backward accumulates into it. The cost is ~0.43 GB of FP32 gradients that stay allocated through the forward pass, which is visible in S4's peak memory.
+- The trainer marks each micro-batch as a new graph step (`torch.compiler.cudagraph_mark_step_begin()`), which does nothing without CUDA graphs.
+
+## Laptop benchmarks need an absolute clock floor and automatic re-runs
+- The laptop's platform power and thermal management can slow the GPU without the GPU being hot. Two cases seen in M4: (1) a whole run held at the 1140 MHz base clock at 80–86 W of 115 W, with no throttle reason reported; (2) a "SW thermal slowdown" that dropped the memory clock from 6801 to 810 MHz and power to ~30 W while the GPU read 48–50 °C.
+- Case 1 is invisible to a trial-vs-trial comparison, because every trial agrees. So a trial is also flagged when its median SM clock is below the rated boost (1380 MHz) that the MFU peak assumes. This floor applies only to the laptop. A T4 runs below its boost clock under sustained load by design (70 W limit).
+- `scripts/run_ladder.sh` re-runs a flagged stage after a 5-minute rest, up to 3 attempts. A GPU-temperature cooldown alone isn't enough, since the throttling sensor isn't the GPU's. Only unflagged results go into the ladder table; if a stage stays flagged, its row is marked.

@@ -35,5 +35,15 @@ python -c "from nanonemo.data.shard import read_header; import json, pathlib; d 
 ```
 `read_header` checks magic, version and exact file size, so a truncated upload fails here.
 
+## Ladder benchmarks on a T4
+One GPU of the 2× T4 notebook is enough (the harness uses `cuda:0`). In a notebook with the dataset attached and the GPU accelerator on:
+```bash
+!git clone https://github.com/SabariIyyappan/NanoNemo.git && cd NanoNemo && pip install -q -e .
+!cd NanoNemo && python scripts/smoke_gpu.py   # torch must list sm_75; reports the Triton tl.dot status
+!cd NanoNemo && for s in s0_fp32 s1_fp16 s2_mem_efficient s3_compile s4_cudagraphs; do \
+    python scripts/bench_train.py --config configs/stages/$s.yaml --data-dir /kaggle/input/nanonemo-nemotron-cc; done
+```
+Results land in `NanoNemo/results/ladder/t4/`. Download that folder from the notebook's output and copy it into `results/ladder/t4/` locally. The whole ladder takes about 20 minutes on a T4.
+
 ## Checkpoint hand-off between sessions
 _To be written in M7, together with the DCP checkpointing code._

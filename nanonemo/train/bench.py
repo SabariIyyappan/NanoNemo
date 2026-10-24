@@ -19,7 +19,7 @@ from nanonemo.train.optim import build_optimizer, lr_at
 from nanonemo.train.trainer import AMP_DTYPES, build_model, build_scaler, static_grads, train_step
 from nanonemo.utils.env import capture_env
 from nanonemo.utils.gpumon import GpuMonitor, summarize, throttle_flags
-from nanonemo.utils.mfu import flops_per_token, mfu, peak_tflops
+from nanonemo.utils.mfu import flops_per_token, mfu, peak_tflops, rated_boost_mhz
 
 
 def _spread(values: list[float]) -> dict:
@@ -131,7 +131,9 @@ def benchmark(
             "reserved": torch.cuda.max_memory_reserved() / 2**30,
         } if cuda else None,
         "warmup_s": warmup_s,
-        "throttle_flags": throttle_flags([t["gpu"] for t in trial_results]) if cuda else [],
+        "throttle_flags": throttle_flags(
+            [t["gpu"] for t in trial_results], min_mhz=rated_boost_mhz(torch.cuda.get_device_name())
+        ) if cuda else [],
         "trials": trial_results,
         "params": model.num_params(),
         "config": {"model": asdict(model_cfg), "train": asdict(cfg)},

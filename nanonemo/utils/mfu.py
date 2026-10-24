@@ -45,15 +45,30 @@ PEAK_TFLOPS = {
 }
 
 
-def peak_tflops(device_name: str) -> dict | None:
-    """Peak table entry for a torch/nvidia-smi device name, or None if the GPU isn't listed."""
+# Clock floor for a valid run: the rated boost the peaks above assume. Only for the laptop,
+# whose firmware can hold the GPU at its 1140 MHz base clock for a whole run (seen in M4:
+# 80-86 W of 115 W, no throttle reason reported). A T4 under sustained load sits below
+# its 1590 MHz boost as normal operation (70 W limit), so a floor there would flag every run.
+RATED_BOOST_MHZ = {"rtx 2070 super": 1380}
+
+
+def _lookup(table: dict, device_name: str):
     name = device_name.lower().replace("nvidia", "").replace("geforce", "").replace("tesla", "")
     name = " ".join(name.replace("laptop gpu", "").split())
     # Longest key first, so "rtx 2070 super" is never shadowed by a shorter key.
-    for key in sorted(PEAK_TFLOPS, key=len, reverse=True):
+    for key in sorted(table, key=len, reverse=True):
         if name == key or name.startswith(key + " "):
-            return PEAK_TFLOPS[key]
+            return table[key]
     return None
+
+
+def peak_tflops(device_name: str) -> dict | None:
+    """Peak table entry for a torch/nvidia-smi device name, or None if the GPU isn't listed."""
+    return _lookup(PEAK_TFLOPS, device_name)
+
+
+def rated_boost_mhz(device_name: str) -> int | None:
+    return _lookup(RATED_BOOST_MHZ, device_name)
 
 
 def mfu(tokens_per_s: float, flops_per_tok: int, peak_tflops_value: float) -> float:

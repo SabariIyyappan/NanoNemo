@@ -95,14 +95,17 @@ def summarize(samples: list[dict]) -> dict:
         "power_w_median": median(s["power_w"] for s in samples),
         "util_pct_median": median(s["util_pct"] for s in samples),
         "slowdown_reasons": [name for bit, name in SLOWDOWN_REASONS.items() if reasons & bit],
+        "reasons_mask": hex(reasons),  # OR of every sample's clocks_event_reasons, for diagnosis
     }
 
 
-def throttle_flags(trials: list[dict], tol: float = 0.10) -> list[str]:
+def throttle_flags(trials: list[dict], tol: float = 0.10, min_mhz: int | None = None) -> list[str]:
     """Reasons to distrust a set of trials (summaries from `summarize`); empty means clean.
 
     Flags a trial whose median SM clock is more than `tol` below the median across all
-    trials (a sustained drop), and any trial that reported a thermal/hardware slowdown.
+    trials (a sustained drop), any trial whose median is below `min_mhz` (the rated boost:
+    a cap the whole run sat under, which comparing trials can't see), and any trial
+    that reported a thermal/hardware slowdown.
     Single low samples are not flagged: at its power limit the clock swings by ~25%
     every few hundred ms (1335-1785 MHz on the RTX 2070 Super) with steady throughput.
     """
@@ -117,6 +120,8 @@ def throttle_flags(trials: list[dict], tol: float = 0.10) -> list[str]:
             continue
         if t["sm_mhz"]["median"] < (1 - tol) * ref:
             flags.append(f"trial {i}: median SM clock {t['sm_mhz']['median']:.0f} MHz (median of trials {ref:.0f})")
+        if min_mhz and t["sm_mhz"]["median"] < min_mhz:
+            flags.append(f"trial {i}: median SM clock {t['sm_mhz']['median']:.0f} MHz is below the rated boost {min_mhz}")
         if t["slowdown_reasons"]:
             flags.append(f"trial {i}: {', '.join(t['slowdown_reasons'])}")
     return flags
