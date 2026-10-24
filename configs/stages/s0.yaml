@@ -1,0 +1,12 @@
+# S0: eager FP32 reference, the baseline row of the optimization ladder.
+# Benchmark config: every stage is measured at the same seq_len, micro-batch and global batch,
+# so only the stage's own change differs. The global batch is 16k tokens (8 micro-batches
+# of 2), not the main run's 0.5M: throughput per token is the same, and 50 steps x 3 trials
+# then takes minutes instead of hours.
+model: {}  # spec defaults (nanonemo/model/config.py)
+train:
+  data_dir: data/nemotron_cc
+  seq_len: 1024
+  micro_batch: 2          # FP32 eager: micro 4 OOMs on 8 GB
+  global_batch_tokens: 16384
+  peak_lr: 6.0e-4

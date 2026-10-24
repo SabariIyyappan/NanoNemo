@@ -59,3 +59,25 @@ Nemotron-CC has already been globally deduplicated and quality-filtered upstream
 ## Initial loss is ~10.98, not ln(V) = 10.83
 - The final RMSNorm gives the hidden state unit RMS. Each logit is its dot product with a tied-embedding row (std 0.02), so logits start with std σ = 0.02·√768 ≈ 0.55.
 - Random logits with spread σ cost about σ²/2 ≈ 0.15 nats more than a uniform prediction. The step-0 loss check expects ln(V) + σ²/2.
+
+## MFU counts the tied lm_head matmul
+- FLOPs per token = 6 × N_matmul + 12 × n_layers × d_model × seq_len (PaLM, appendix B), divided by the GPU's peak dense FP16 tensor-core throughput.
+- The spec says "6 × non-embedding params". That convention assumes the embedding is only a lookup. Here the embedding is tied to the output projection, and the 768 → 50,304 lm_head matmul is real work: 6 × 38.6M ≈ 232 MFLOP per token, about 29% of the total. Leaving it out would understate MFU by about a third, so N_matmul counts it once. Norm gains are excluded (they do no matmul).
+- For the spec model at seq 1024: 6 × 114,130,944 + 113,246,208 = 798,031,872 FLOPs per token.
+- The attention term counts the full T × T score matrix, as PaLM does, even though causal attention needs only half of it. This matches the published convention, so numbers stay comparable with other reports.
+
+## Peak FLOPs per GPU (MFU denominators)
+| GPU | FP16 tensor (FP32 acc), TFLOP/s | FP32, TFLOP/s | Source |
+|---|---|---|---|
+| RTX 2070 Super laptop | 28.3 | 7.07 | 40 SMs × 1024 FLOP/clk/SM × 1.38 GHz rated boost, halved for FP32 accumulate (Turing whitepaper rates; NVIDIA mobile SUPER launch specs) |
+| T4 | 65 | 8.1 | NVIDIA T4 datasheet |
+| L4 | 121 (dense) | 30.3 | NVIDIA L4 datasheet (242 is the with-sparsity figure) |
+- GeForce Turing runs FP16 tensor-core math with FP32 accumulation at half the FP16-accumulate rate. PyTorch accumulates in FP32, so the halved figure is the real ceiling. Datacenter parts (T4, L4) have no such halving.
+- Peaks use the *rated* boost clock. The laptop GPU often boosts well past it (up to its 2100 MHz limit) when cool, so achieved clocks are recorded with every result rather than folded into the peak.
+- MFU is also reported against the FP32 CUDA-core peak, which is the relevant ceiling for the FP32 S0 stage (Turing has no TF32).
+
+## Benchmark methodology
+- `scripts/bench_train.py` times the trainer's own `train_step` on real data: 5 warmup steps (excluded, but their time is recorded, since in later stages it includes compilation), then 3 trials of 50 optimizer steps. It reports the median and min/max across trials.
+- Each step is bracketed by CUDA events. Throughput per trial is its tokens divided by the sum of its step times.
+- Stage benchmark configs (`configs/stages/`) use a 16,384-token global batch (8 micro-batches of 2 at seq 1024) instead of the main run's 0.5M. Throughput per token doesn't depend on the accumulation count, and 150 timed steps take minutes instead of hours.
+- An `nvidia-smi --loop-ms` subprocess samples SM clock, temperature, power and clock-event reasons during each trial. A trial is flagged if its lowest SM clock falls more than 10% below the median clock across trials, or if it reports a thermal or hardware slowdown. The software power cap is not a flag on its own: under full load a laptop GPU sits at its power limit all the time.
