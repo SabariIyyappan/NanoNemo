@@ -3,6 +3,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from nanonemo.model.config import ModelConfig
 
@@ -44,6 +45,7 @@ class Attention(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
         self.n_heads, self.n_kv_heads, self.head_dim = cfg.n_heads, cfg.n_kv_heads, cfg.head_dim
+        self.backend = {"math": SDPBackend.MATH, "mem_efficient": SDPBackend.EFFICIENT_ATTENTION}[cfg.attn_backend]
         self.wq = nn.Linear(cfg.d_model, cfg.n_heads * cfg.head_dim, bias=False)
         self.wk = nn.Linear(cfg.d_model, cfg.n_kv_heads * cfg.head_dim, bias=False)
         self.wv = nn.Linear(cfg.d_model, cfg.n_kv_heads * cfg.head_dim, bias=False)
@@ -61,7 +63,8 @@ class Attention(nn.Module):
         k = k.repeat_interleave(group, dim=1)
         v = v.repeat_interleave(group, dim=1)
 
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)  # (B, H, T, hd)
+        with sdpa_kernel(self.backend):
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)  # (B, H, T, hd)
         return self.wo(y.transpose(1, 2).reshape(B, T, -1))
 
 
