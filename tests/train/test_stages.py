@@ -123,3 +123,9 @@ def test_triton_kernels_track_s4_training(tmp_path):
     s4 = _losses(ModelConfig(**base), _cfg(tmp_path, precision="fp16", compile="reduce-overhead"), steps=15)
     s5 = _losses(ModelConfig(**{**base, **triton}), _cfg(tmp_path, precision="fp16", compile="reduce-overhead"), steps=15)
     np.testing.assert_allclose(s5, s4, rtol=0.02, atol=0.02)
+
+
+@pytest.mark.parametrize("path", sorted(str(p) for p in __import__("pathlib").Path("configs").rglob("*.yaml")))
+def test_every_config_loads(path):
+    # A typo'd key or bad value fails here, not 20 minutes into a Kaggle session.
+    load_config(path)

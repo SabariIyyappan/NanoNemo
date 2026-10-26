@@ -29,12 +29,40 @@ class TrainConfig:
     compile: str | None = None  # None (eager) | default | max-autotune | reduce-overhead (+ CUDA graphs)
     wandb_project: str | None = None  # None: console + metrics.jsonl only
     wandb_run_name: str | None = None
+    # Multi-GPU (launch with torchrun): none | ddp | fsdp | tp. See nanonemo/distributed/.
+    parallel: str = "none"
+    ddp_bucket_mb: float = 25.0
+    ddp_grad_as_bucket_view: bool = False
+    fsdp_param_dtype: str = "fp32"  # fp32 | fp16: dtype of the gathered parameters
+    fsdp_reshard_after_forward: bool = True
+    fsdp_prefetch: bool = False  # explicit next-block all-gather prefetch
+    fsdp_compile_blocks: bool = False  # torch.compile each block (instead of `compile` on the whole model)
+    # Checkpoints (DCP). Saved every ckpt_every steps (0: never on a schedule), and always on
+    # leaving early (stop_after_min / max_steps) or at the end when checkpointing is on.
+    ckpt_every: int = 0
+    ckpt_dir: str | None = None  # default: <out_dir>/ckpt
+    ckpt_async: bool = True
+    resume_from: str | None = None  # a checkpoint dir, or a ckpt root with a `latest` file
+    stop_after_min: float | None = None  # wall-clock budget for this session (Kaggle limits)
+    max_steps: int | None = None  # stop after this many steps in this session
 
     def __post_init__(self):
         if self.precision not in ("fp32", "fp16", "bf16"):
             raise ValueError(f"unknown precision {self.precision!r}")
         if self.compile not in (None, "default", "max-autotune", "reduce-overhead"):
             raise ValueError(f"unknown compile mode {self.compile!r}")
+        if self.parallel not in ("none", "ddp", "fsdp", "tp"):
+            raise ValueError(f"unknown parallel {self.parallel!r}")
+        if self.parallel != "none" and self.compile == "reduce-overhead":
+            raise ValueError("CUDA graphs (compile reduce-overhead) are single-GPU only here")
+        if self.fsdp_param_dtype not in ("fp32", "fp16"):
+            raise ValueError(f"unknown fsdp_param_dtype {self.fsdp_param_dtype!r}")
+        if self.fsdp_compile_blocks and (self.parallel != "fsdp" or self.compile is not None):
+            raise ValueError("fsdp_compile_blocks needs parallel=fsdp and compile unset")
+
+    @property
+    def checkpointing(self) -> bool:
+        return bool(self.ckpt_every or self.stop_after_min or self.max_steps or self.resume_from)
 
     def grad_accum(self, world_size: int = 1) -> int:
         per_micro = self.micro_batch * self.seq_len * world_size

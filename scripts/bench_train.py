@@ -1,14 +1,18 @@
 """Benchmark training throughput for one run config and save the result as JSON.
 
     scripts/run_container.sh python scripts/bench_train.py --config configs/stages/s0.yaml
+    torchrun --nproc_per_node=2 scripts/bench_train.py --config configs/dist/ddp.yaml
 
-Writes results/ladder/<gpu>/<config name>.json unless --out is given.
+Writes results/ladder/<gpu>/<config name>.json (single GPU) or
+results/dist/<gpu>-x<N>/<config name>.json (torchrun, N GPUs) unless --out is given.
 """
 
 import argparse
 import json
+import os
 from pathlib import Path
 
+from nanonemo import distributed
 from nanonemo.train.bench import benchmark
 from nanonemo.train.config import load_config
 from nanonemo.utils.env import gpu_slug
@@ -51,8 +55,13 @@ def main() -> None:
         train_cfg.data_dir = args.data_dir
     result = benchmark(model_cfg, train_cfg, steps=args.steps, trials=args.trials, warmup_steps=args.warmup)
     result["config_path"] = args.config
+    world = result["bench"]["world"]
+    distributed.destroy()
+    if int(os.environ.get("RANK", 0)) != 0:
+        return
 
-    out = Path(args.out or f"results/ladder/{gpu_slug()}/{Path(args.config).stem}.json")
+    default = f"results/ladder/{gpu_slug()}" if world == 1 else f"results/dist/{gpu_slug()}-x{world}"
+    out = Path(args.out or f"{default}/{Path(args.config).stem}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2) + "\n")
     print_summary(result)

@@ -21,4 +21,5 @@ testpaths = ["tests"]
 markers = [
     "gpu: needs a CUDA GPU",
     "multigpu: needs 2+ CUDA GPUs",
+    "distributed: multi-process (torchrun) tests on the CPU with gloo; slow",
 ]
