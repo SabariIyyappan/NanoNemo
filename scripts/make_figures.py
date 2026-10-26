@@ -136,6 +136,23 @@ def _nccl_share(path: Path) -> str:
     return f"{comm / total:.1%}"
 
 
+PRECISION = {"fp16": "FP16 AMP", "bf16": "BF16 AMP", "bf16_te": "BF16 + Transformer Engine linears",
+             "fp8_delayed": "FP8 (TE, delayed scaling)", "fp8_current": "FP8 (TE, current scaling)"}
+
+
+def precision() -> str:
+    rows = []
+    for stem, name in PRECISION.items():
+        r = load(RESULTS / "ladder" / "l4" / f"{stem}.json")
+        curve = RESULTS / "precision" / "l4" / f"{stem}.jsonl"
+        vals = [json.loads(line)["val_loss"] for line in curve.read_text().splitlines()
+                if "val_loss" in line] if curve.exists() else []
+        rows.append([name, f"{r['tokens_per_s']['median']:,.0f}" if r else TBD,
+                     f"{r['mfu']['fp16_tc']['median']:.1%}" if r and r["mfu"] else TBD,
+                     f"{r['peak_mem_gb']['allocated']:.2f} GB" if r else TBD, f"{vals[-1]:.3f}" if vals else TBD])
+    return table(["Precision", "Tokens/s", "MFU (vs dense FP16 TC peak)", "Peak mem", "Val loss after 20M tokens"], rows)
+
+
 def quality() -> str:
     main = load(RESULTS / "main" / "summary.json")
     rows = []
@@ -191,9 +208,7 @@ def main() -> None:
     ladder_figure(bars)
     sections.append("![Ladder tokens/s](../figures/ladder_tokens_per_s.png)")
     sections.append(f"### Multi-GPU (Kaggle 2x T4)\n\n{dist()}")
-    sections.append("### Precision (AWS L4)\n\n" + table(["Precision", "Tokens/s", "MFU", "Peak mem", "Loss after short run"],
-                                                           [[p, TBD, TBD, TBD, TBD] for p in
-                                                            ("FP16 AMP", "BF16 AMP", "BF16 + Transformer Engine", "FP8 + Transformer Engine")]))
+    sections.append(f"### Precision (AWS L4)\n\n{precision()}")
     sections.append(f"### Model quality (zero-shot, lm-evaluation-harness 0.4.9, identical settings)\n\n{quality()}")
     sections.append(f"### Main run\n\n{loss_figure()}")
     for gpu, name in GPUS.items():

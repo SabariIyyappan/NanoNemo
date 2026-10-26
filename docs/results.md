@@ -38,18 +38,19 @@ TBD
 
 ### Precision (AWS L4)
 
-| Precision | Tokens/s | MFU | Peak mem | Loss after short run |
+| Precision | Tokens/s | MFU (vs dense FP16 TC peak) | Peak mem | Val loss after 20M tokens |
 |---|---|---|---|---|
 | FP16 AMP | TBD | TBD | TBD | TBD |
 | BF16 AMP | TBD | TBD | TBD | TBD |
-| BF16 + Transformer Engine | TBD | TBD | TBD | TBD |
-| FP8 + Transformer Engine | TBD | TBD | TBD | TBD |
+| BF16 + Transformer Engine linears | TBD | TBD | TBD | TBD |
+| FP8 (TE, delayed scaling) | TBD | TBD | TBD | TBD |
+| FP8 (TE, current scaling) | TBD | TBD | TBD | TBD |
 
 ### Model quality (zero-shot, lm-evaluation-harness 0.4.9, identical settings)
 
 | Model | Tokens trained | HellaSwag (acc_norm) | ARC-Easy (acc_norm) | PIQA (acc_norm) | LAMBADA (acc) | Val loss |
 |---|---|---|---|---|---|---|
-| GPT-2 124M (HF `gpt2`, evaluated by us) | ~10B+ (published) | TBD | TBD | TBD | TBD | n/a |
+| GPT-2 124M (HF `gpt2`, evaluated by us) | ~10B+ (published) | 31.1% ± 0.5% | 39.5% ± 1.0% | 62.5% ± 1.1% | 32.6% ± 0.7% | n/a |
 | NanoNemo-114M (ours) | ~2.4B | TBD | TBD | TBD | TBD | TBD |
 
 ### Main run
