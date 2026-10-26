@@ -34,7 +34,7 @@ class NanoNemo(nn.Module):
             nn.init.normal_(block.mlp.w_down.weight, std=resid_std)
 
     def _init_weights(self, module: nn.Module):
-        if isinstance(module, (nn.Linear, nn.Embedding)):
+        if isinstance(module, (nn.Linear, nn.Embedding)) or getattr(module, "_nanonemo_init", False):
             nn.init.normal_(module.weight, std=self.cfg.init_std)
 
     def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None):

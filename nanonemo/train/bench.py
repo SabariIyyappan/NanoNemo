@@ -86,7 +86,7 @@ def benchmark(
             group["lr"] = lr_at(step, cfg.peak_lr, total, lr_warmup, cfg.min_lr_ratio)
         step += 1
         return train_step(step_model, opt, loader, accum, cfg.grad_clip, amp_dtype, scaler, static_grads(cfg),
-                          setup.sync_ctx, setup.loss_ctx)
+                          setup.sync_ctx, setup.loss_ctx, setup.fwd_ctx)
 
     # Warmup: first CUDA context use, cuBLAS heuristics, allocator growth, and (later stages)
     # torch.compile and CUDA-graph capture. Timed, but kept out of the throughput numbers.

@@ -32,6 +32,9 @@ class ModelConfig:
     # (nanonemo/kernels/triton/linear_ce.py: chunked, never builds the (B*T, vocab) logits).
     # With "fused", forward(idx, targets) returns logits=None.
     loss_kernel: str = "torch"
+    # "torch" (nn.Linear) or "te" (Transformer Engine te.Linear for the blocks' linear layers;
+    # needed for FP8 training on an L4; see nanonemo/te).
+    linear_impl: str = "torch"
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must divide evenly into heads"
@@ -43,6 +46,7 @@ class ModelConfig:
             assert getattr(self, name) in ("torch", "triton"), f"unknown {name} {getattr(self, name)!r}"
         assert self.attn_kernel in ("torch", "cuda"), f"unknown attn_kernel {self.attn_kernel!r}"
         assert self.loss_kernel in ("torch", "fused"), f"unknown loss_kernel {self.loss_kernel!r}"
+        assert self.linear_impl in ("torch", "te"), f"unknown linear_impl {self.linear_impl!r}"
 
     @property
     def head_dim(self) -> int:

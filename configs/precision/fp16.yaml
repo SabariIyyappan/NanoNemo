@@ -1,0 +1,19 @@
+# M8 precision row on 1x L4 (AWS g6.xlarge): FP16 AMP + GradScaler (our stack, as on Turing)
+# Same everything except precision / linear layers. Speed: scripts/bench_train.py; quality:
+# a 20M-token short run with scripts/train.py (scripts/run_precision.sh does both).
+model:
+  attn_backend: mem_efficient
+train:
+  data_dir: data/nemotron_cc_1shard
+  out_dir: runs/precision/fp16
+  seq_len: 1024
+  micro_batch: 8
+  global_batch_tokens: 65536
+  total_tokens: 20971520     # 320 steps
+  warmup_frac: 0.05
+  peak_lr: 6.0e-4
+  compile: default
+  eval_every: 80
+  eval_batches: 20
+  log_every: 10
+  precision: fp16

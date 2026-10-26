@@ -25,7 +25,8 @@ class TrainConfig:
     eval_every: int = 50  # optimizer steps
     eval_batches: int = 20
     log_every: int = 1
-    precision: str = "fp32"  # fp32 | fp16 (autocast + GradScaler; Turing has no BF16) | bf16 (autocast)
+    precision: str = "fp32"  # fp32 | fp16 (autocast + GradScaler; Turing has no BF16) | bf16 (autocast) | fp8
+    fp8_recipe: str = "delayed"  # precision fp8 (BF16 autocast + TE FP8 GEMMs): delayed | current scaling
     compile: str | None = None  # None (eager) | default | max-autotune | reduce-overhead (+ CUDA graphs)
     wandb_project: str | None = None  # None: console + metrics.jsonl only
     wandb_run_name: str | None = None
@@ -47,7 +48,9 @@ class TrainConfig:
     max_steps: int | None = None  # stop after this many steps in this session
 
     def __post_init__(self):
-        if self.precision not in ("fp32", "fp16", "bf16"):
+        if self.fp8_recipe not in ("delayed", "current"):
+            raise ValueError(f"unknown fp8_recipe {self.fp8_recipe!r}")
+        if self.precision not in ("fp32", "fp16", "bf16", "fp8"):
             raise ValueError(f"unknown precision {self.precision!r}")
         if self.compile not in (None, "default", "max-autotune", "reduce-overhead"):
             raise ValueError(f"unknown compile mode {self.compile!r}")

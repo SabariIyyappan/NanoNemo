@@ -10,6 +10,14 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from nanonemo.model.config import ModelConfig
 
 
+def make_linear(cfg: ModelConfig, in_features: int, out_features: int) -> nn.Module:
+    if cfg.linear_impl == "te":
+        from nanonemo import te
+
+        return te.linear(in_features, out_features)
+    return nn.Linear(in_features, out_features, bias=False)
+
+
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-5):
         super().__init__()
@@ -69,10 +77,10 @@ class Attention(nn.Module):
         super().__init__()
         self.n_heads, self.n_kv_heads, self.head_dim = cfg.n_heads, cfg.n_kv_heads, cfg.head_dim
         self.backend = {"math": SDPBackend.MATH, "mem_efficient": SDPBackend.EFFICIENT_ATTENTION}[cfg.attn_backend]
-        self.wq = nn.Linear(cfg.d_model, cfg.n_heads * cfg.head_dim, bias=False)
-        self.wk = nn.Linear(cfg.d_model, cfg.n_kv_heads * cfg.head_dim, bias=False)
-        self.wv = nn.Linear(cfg.d_model, cfg.n_kv_heads * cfg.head_dim, bias=False)
-        self.wo = nn.Linear(cfg.n_heads * cfg.head_dim, cfg.d_model, bias=False)
+        self.wq = make_linear(cfg, cfg.d_model, cfg.n_heads * cfg.head_dim)
+        self.wk = make_linear(cfg, cfg.d_model, cfg.n_kv_heads * cfg.head_dim)
+        self.wv = make_linear(cfg, cfg.d_model, cfg.n_kv_heads * cfg.head_dim)
+        self.wo = make_linear(cfg, cfg.n_heads * cfg.head_dim, cfg.d_model)
         self.rope_qk = None
         if cfg.rope_kernel == "triton":
             from nanonemo.kernels.triton.rope import apply_rope_qk
@@ -117,9 +125,9 @@ class MLP(nn.Module):
 
     def __init__(self, cfg: ModelConfig):
         super().__init__()
-        self.w_gate = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)
-        self.w_up = nn.Linear(cfg.d_model, cfg.d_ff, bias=False)
-        self.w_down = nn.Linear(cfg.d_ff, cfg.d_model, bias=False)
+        self.w_gate = make_linear(cfg, cfg.d_model, cfg.d_ff)
+        self.w_up = make_linear(cfg, cfg.d_model, cfg.d_ff)
+        self.w_down = make_linear(cfg, cfg.d_ff, cfg.d_model)
         self.act = silu_mul
         if cfg.swiglu_kernel == "triton":
             from nanonemo.kernels.triton.swiglu import swiglu

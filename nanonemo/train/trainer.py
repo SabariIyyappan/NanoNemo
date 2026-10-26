@@ -34,7 +34,8 @@ def evaluate(model: NanoNemo, loader: TokenLoader, n_batches: int, loss_ctx: Cal
     return total / n_batches
 
 
-AMP_DTYPES = {"fp32": None, "fp16": torch.float16, "bf16": torch.bfloat16}
+# fp8: BF16 autocast for everything, plus FP8 GEMMs in the Transformer Engine linears.
+AMP_DTYPES = {"fp32": None, "fp16": torch.float16, "bf16": torch.bfloat16, "fp8": torch.bfloat16}
 
 
 def build_model(model_cfg: ModelConfig, cfg: TrainConfig, device: str):
@@ -70,10 +71,22 @@ class Setup:
     # ranks only on the last micro-batch of a step (DDP no_sync / FSDP requires_gradient_sync).
     sync_ctx: Callable[[bool], ContextManager] = lambda last: nullcontext()
     loss_ctx: Callable[[], ContextManager] = nullcontext  # TP: loss_parallel()
+    fwd_ctx: Callable[[], ContextManager] = nullcontext  # around the forward only: FP8 autocast
     sharded_grads: bool = False  # gradients are DTensors (FSDP, TP)
 
 
 def build_parallel(model_cfg: ModelConfig, cfg: TrainConfig, d: distributed.Dist) -> Setup:
+    setup = _build_parallel(model_cfg, cfg, d)
+    if cfg.precision == "fp8":
+        if model_cfg.linear_impl != "te":
+            raise ValueError("precision fp8 needs model.linear_impl: te")
+        from nanonemo.te import fp8_context
+
+        setup.fwd_ctx = fp8_context(cfg.fp8_recipe)
+    return setup
+
+
+def _build_parallel(model_cfg: ModelConfig, cfg: TrainConfig, d: distributed.Dist) -> Setup:
     if cfg.parallel == "none":
         model, step_model = build_model(model_cfg, cfg, d.device)
         return Setup(model, step_model)
@@ -145,6 +158,7 @@ def train_step(
     keep_grads: bool = False,
     sync_ctx: Callable[[bool], ContextManager] = lambda last: nullcontext(),
     loss_ctx: Callable[[], ContextManager] = nullcontext,
+    fwd_ctx: Callable[[], ContextManager] = nullcontext,
 ):
     """One optimizer step over `accum` micro-batches. Returns (mean loss over ranks, pre-clip grad norm).
     keep_grads zeroes .grad in place instead of freeing it (needed with CUDA graphs)."""
@@ -156,7 +170,7 @@ def train_step(
         # micro-batch's outputs are finished with. A no-op without CUDA graphs.
         torch.compiler.cudagraph_mark_step_begin()
         with sync_ctx(i == accum - 1), loss_ctx():
-            with torch.autocast(x.device.type, dtype=amp_dtype, enabled=amp_dtype is not None):
+            with torch.autocast(x.device.type, dtype=amp_dtype, enabled=amp_dtype is not None), fwd_ctx():
                 _, loss = model(x, y)
             # Dividing by accum makes the summed .grad the gradient of the mean loss.
             loss = loss / accum
@@ -269,7 +283,7 @@ def train(
 
         loss, grad_norm = train_step(
             setup.step_model, opt, train_loader, accum, cfg.grad_clip, amp_dtype, scaler, static_grads(cfg),
-            setup.sync_ctx, setup.loss_ctx,
+            setup.sync_ctx, setup.loss_ctx, setup.fwd_ctx,
         )
 
         is_last = step == total_steps - 1

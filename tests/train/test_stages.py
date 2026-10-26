@@ -70,7 +70,7 @@ def test_unknown_stage_settings_are_rejected():
     with pytest.raises(AssertionError, match="attn_backend"):
         ModelConfig(attn_backend="flash")  # needs sm_80+; not a Turing stage
     with pytest.raises(ValueError, match="precision"):
-        TrainConfig(precision="fp8")
+        TrainConfig(precision="int8")
     with pytest.raises(ValueError, match="compile"):
         TrainConfig(compile="max_autotune")
 
