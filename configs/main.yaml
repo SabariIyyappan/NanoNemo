@@ -1,0 +1,25 @@
+# M9 main run: ~2.4B tokens on Kaggle 2x T4, across sessions (checkpoint hand-off: docs/kaggle_workflow.md).
+# Layout and LR come from M7: the fastest validated multi-GPU row, and the LR sweep's winner.
+#   torchrun --nproc_per_node=2 scripts/train.py --config configs/main.yaml \
+#       --set train.data_dir=<dataset> train.out_dir=/kaggle/working/main train.stop_after_min=690 \
+#             [train.resume_from=<previous session's ckpt>]
+model:
+  attn_backend: mem_efficient
+train:
+  data_dir: data/nemotron_cc
+  out_dir: runs/main
+  seq_len: 1024
+  micro_batch: 4
+  global_batch_tokens: 524288
+  total_tokens: 2415000000     # the M1 train split (2,415,765,275 tokens): one epoch
+  warmup_frac: 0.02
+  peak_lr: 6.0e-4              # to be confirmed by the M7 LR sweep
+  precision: fp16
+  compile: default
+  parallel: ddp                # to be confirmed by the M7 multi-GPU table
+  ddp_bucket_mb: 100
+  ddp_grad_as_bucket_view: true
+  eval_every: 250
+  eval_batches: 40
+  log_every: 10
+  ckpt_every: 250              # ~1 checkpoint per 40-60 min on 2x T4

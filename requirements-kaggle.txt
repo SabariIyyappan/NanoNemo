@@ -1,0 +1,10 @@
+# Kaggle notebooks: on top of Kaggle's preinstalled torch / triton / CUDA toolkit.
+# torch is not reinstalled (a multi-GB download per session). It must be >= 2.6 (FSDP2's
+# fully_shard, DTensor TP, DCP async_save) and its arch list must include sm_75 (T4);
+# scripts/smoke_gpu.py checks both at the start of every session.
+ninja            # builds the CUDA C++ kernels (torch.utils.cpp_extension)
+tiktoken
+pyyaml
+zstandard
+requests
+pytest

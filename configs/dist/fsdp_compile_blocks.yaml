@@ -1,0 +1,17 @@
+# M7 multi-GPU row: FSDP2 + prefetch + per-block torch.compile (collectives stay outside the compiled graphs)
+# Shared base (all configs/dist/*.yaml): the S3 stage (FP16 AMP, mem-efficient SDPA, torch.compile
+# default; CUDA graphs are single-GPU only here), micro-batch 4, 64k-token steps so a benchmark
+# takes minutes. Same global batch on 1 and 2 GPUs: 2 GPUs split it, so each does half the micro-batches.
+#   torchrun --nproc_per_node=2 scripts/bench_train.py --config configs/dist/<name>.yaml --steps 10
+model:
+  attn_backend: mem_efficient
+train:
+  data_dir: data/nemotron_cc
+  seq_len: 1024
+  micro_batch: 4
+  global_batch_tokens: 65536
+  peak_lr: 6.0e-4
+  precision: fp16
+  parallel: fsdp
+  fsdp_prefetch: true
+  fsdp_compile_blocks: true

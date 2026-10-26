@@ -45,5 +45,32 @@ One GPU of the 2× T4 notebook is enough (the harness uses `cuda:0`). In a noteb
 ```
 Results land in `NanoNemo/results/ladder/t4/`, next to the committed laptop results that came with the clone. Zip and download that folder (`zip -r /kaggle/working/t4_results.zip results/ladder/t4`, then the Output panel) and unzip it at the repo root locally. The whole ladder takes about 20 minutes on a T4.
 
+## Multi-GPU runs (M7) and the main run (M9)
+`notebooks/kaggle_train.ipynb` is the launcher: upload it as a Kaggle notebook (File → Import Notebook), set **Accelerator: GPU T4 x2**, turn Internet on, and attach the token dataset. Its cells, in order:
+
+1. Clone the repo, install `requirements-kaggle.txt` (Kaggle's own torch is kept), run `scripts/smoke_gpu.py`.
+2. Find the dataset (`DATA`) and any attached previous checkpoint (`PREV`).
+3. `pytest -m multigpu tests/distributed` with `NANONEMO_TEST_DEVICE=cuda`: DDP / FSDP2 / TP on 2 GPUs match 1 GPU, and resume reproduces an uninterrupted run (the same tests run on the laptop's CPU with gloo).
+4. The multi-GPU table: `configs/dist/*.yaml` through `scripts/bench_train.py` (torchrun for the 2-GPU rows), then `scripts/dist_table.py`. Results in `results/dist/t4-x1/` and `t4-x2/`.
+5. `scripts/nsys_dist.sh` per row: an Nsight Systems trace of one trial and the NCCL share of GPU time.
+6. The LR sweep: `configs/lr_sweep/*.yaml`, 100M tokens each.
+7. The main run, `configs/main.yaml`.
+8. Zip `results/` into `/kaggle/working` for download.
+
+Steps 3-6 fit in one session (roughly 3 h). Pick the main run's `parallel` and `peak_lr` from them and update `configs/main.yaml` before starting step 7.
+
 ## Checkpoint hand-off between sessions
-_To be written in M7, together with the DCP checkpointing code._
+A Kaggle session ends after 12 hours, and only `/kaggle/working` survives, as the notebook's output. The main run is built around that:
+
+- `train.stop_after_min=690` makes the run stop itself after 11.5 h: every rank agrees on the step to stop at, writes a checkpoint, and exits cleanly (exit code 0, so the notebook "Save & Run All" finishes).
+- Checkpoints go to `/kaggle/working/main/ckpt/step_NNNNNN/` every `ckpt_every` steps (250 steps, roughly 40-60 min) and at the stop. They are DCP checkpoints: each GPU writes its own shard in parallel, in a background thread (`ckpt_async`), so training continues while the files are written. `ckpt/latest` names the newest *complete* checkpoint; only the last two are kept.
+- Each checkpoint holds the model, the AdamW moments, and `trainer.json`: the step (so the LR schedule continues where it was), the loader position (so no batch is seen twice or skipped), and the FP16 loss scale.
+
+To continue in a new session:
+1. In the finished session's page, **Output → New Dataset** (or "Add to dataset" with a new version), e.g. `nanonemo-main-ckpt`. Only `main/ckpt` matters (~1.4 GB: FP32 weights + 2 Adam moments).
+2. In the next session, attach that dataset as an input next to the token data. The notebook finds `.../ckpt/latest` and passes `train.resume_from=` automatically.
+3. `metrics.jsonl` in the new output continues the old one (the resumed run appends), so the loss curve is the concatenation of each session's file; the `start` record of each session marks the resume point.
+
+DCP reshards on load, so a checkpoint is not tied to the layout that wrote it: an FSDP checkpoint from 2 GPUs loads on 1 GPU (tested), and the loader position is converted between data-parallel world sizes.
+
+**GPU quota.** Kaggle gives ~30 GPU-hours per week. At ~29k tokens/s (2x the single-T4 S3 rate) the 2.4B-token main run takes ~23 h: two to three sessions, plus ~3 h for the M7 session, which can cross a weekly quota boundary.
