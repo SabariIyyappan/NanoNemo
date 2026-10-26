@@ -17,4 +17,8 @@ RUN pip install --no-cache-dir \
 # its torch/triton requirements from touching the bundled versions.
 RUN pip install --no-cache-dir --no-deps liger-kernel==0.8.5
 
+# Evaluation (M10): lm-evaluation-harness and transformers. NanoNemo checkpoints are exported
+# to Hugging Face Llama format so they run through the same lm-eval code path as GPT-2.
+RUN pip install --no-cache-dir lm-eval==0.4.9 transformers==4.57.1
+
 WORKDIR /workspace/nanonemo
