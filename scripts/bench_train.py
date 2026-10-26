@@ -9,19 +9,9 @@ import argparse
 import json
 from pathlib import Path
 
-import torch
-
 from nanonemo.train.bench import benchmark
 from nanonemo.train.config import load_config
-
-
-def gpu_slug() -> str:
-    if not torch.cuda.is_available():
-        return "cpu"
-    name = torch.cuda.get_device_name().lower()
-    for word in ("nvidia", "geforce", "tesla", "laptop gpu"):
-        name = name.replace(word, "")
-    return "-".join(name.split())
+from nanonemo.utils.env import gpu_slug
 
 
 def print_summary(r: dict) -> None:

@@ -7,6 +7,18 @@ import socket
 import subprocess
 
 
+def gpu_slug() -> str:
+    """Short GPU name for result folders, e.g. "rtx-2070-super", "t4"."""
+    import torch
+
+    if not torch.cuda.is_available():
+        return "cpu"
+    name = torch.cuda.get_device_name().lower()
+    for word in ("nvidia", "geforce", "tesla", "laptop gpu"):
+        name = name.replace(word, "")
+    return "-".join(name.split())
+
+
 def _run(cmd: list[str]) -> str | None:
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.strip()
