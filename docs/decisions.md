@@ -105,3 +105,27 @@ Nemotron-CC has already been globally deduplicated and quality-filtered upstream
 - The laptop's platform power and thermal management can slow the GPU without the GPU being hot. Two cases seen in M4: (1) a whole run held at the 1140 MHz base clock at 80–86 W of 115 W, with no throttle reason reported; (2) a "SW thermal slowdown" that dropped the memory clock from 6801 to 810 MHz and power to ~30 W while the GPU read 48–50 °C.
 - Case 1 is invisible to a trial-vs-trial comparison, because every trial agrees. So a trial is also flagged when its median SM clock is below the rated boost (1380 MHz) that the MFU peak assumes. This floor applies only to the laptop. A T4 runs below its boost clock under sustained load by design (70 W limit).
 - `scripts/run_ladder.sh` re-runs a flagged stage after a 5-minute rest, up to 3 attempts. A GPU-temperature cooldown alone isn't enough, since the throttling sensor isn't the GPU's. Only unflagged results go into the ladder table; if a stage stays flagged, its row is marked.
+
+## Custom kernels are `torch.library` custom ops, switched per kernel in `ModelConfig`
+- Each Triton kernel is registered with `torch.library.custom_op`, plus `register_fake` (shapes/dtypes for tracing) and `register_autograd` (the backward is a second custom op). `torch.compile` then sees one opaque op and doesn't break the graph, and CUDA graphs capture the Triton launches like any other kernel. `torch.library.opcheck` tests every registration.
+- The switches are `norm_kernel`, `swiglu_kernel`, `rope_kernel` (`torch` | `triton`) on `ModelConfig`, next to `attn_backend`. The plan's separate `KernelConfig` + `ops.py` registry would add a config section and an indirection layer for three switches; the layers simply pick their function at construction. `torch` stays the default, so the reference path is untouched.
+- The S5 stage turns all three on together; `configs/ablations/s5_only_*.yaml` turn on one each, on top of S4, to measure each kernel alone.
+
+## The residual stream travels between blocks as (x, delta)
+- To fuse the residual add into the next RMSNorm, the add has to happen inside the norm. So each block returns `(x, delta)`: the stream and the last sublayer's output, not yet added. Each `AddRMSNorm` computes `h = x + delta`, then returns `(rmsnorm(h), h)`. The first block's norm gets `delta=None`; the final norm adds the last block's MLP output.
+- With the `torch` path this runs exactly the same ops in the same order as before (the add, then the reference `RMSNorm`), so the reference model is unchanged.
+- One kernel reads `x` and `delta` once and writes `h` and the normalized output once. Unfused, the add writes `h` and the norm reads it back.
+
+## The Triton norm writes its output in the autocast dtype
+- Under FP16 autocast the residual stream stays FP32, and the normalized output feeds a matmul that casts it to FP16 anyway. The Triton kernel writes it in FP16 directly: the same single rounding, 2 bytes per element written instead of 4, and no separate cast. The residual `h` is still written in FP32.
+
+## Kernel microbenchmarks time GPU work only
+- At these sizes (30–300 µs per call) `triton.testing.do_bench` measured mostly Python autograd and dispatch overhead: e.g. the RoPE forward+backward took 1.5 ms at batch 2 and 0.26 ms at batch 8. In training the GPU is never waiting on the CPU (S4 showed no launch overhead), so GPU time is what the ladder can gain.
+- `benchmarks/kernels/common.py` captures each call (forward, or forward + backward) in a CUDA graph and replays it, timing each replay with CUDA events after flushing L2 with a 64 MB write. Without the flush, RoPE's batch-2 inputs (4 MB) would sit in the 4 MB L2 and overstate bandwidth.
+- Capture needs PyTorch's recipe: warm up on a side stream first. The backward uses `torch.autograd.grad` (no accumulation into `.grad`).
+- Bandwidth is the kernel's *minimum* bytes moved divided by time, against the DRAM peak (`PEAK_GBPS` in `nanonemo/utils/mfu.py`: 448 GB/s for the 2070S laptop, 320 for T4, 300 for L4).
+- Clocks are sampled per row. A row with a slowdown reason or a memory clock more than 10% below the GPU's max memory clock is re-run after a rest. A first unmonitored run showed every provider slowing ~7× mid-run, to ~39 GB/s, consistent with the laptop's SW thermal slowdown (memory clock 6801 → 810 MHz).
+
+## Liger-Kernel is the reference for kernel comparisons
+- Liger-Kernel 0.8.5, installed with `--no-deps` so pip can't touch NGC's torch/Triton. Its fused add + RMSNorm, SwiGLU and RoPE match ours in function.
+- Differences to keep in mind when reading the numbers: Liger's add + RMSNorm writes the normalized output in the residual's dtype (FP32 in our AMP setting), so its benchmark row includes the FP16 cast the matmul would need; Liger's RoPE rotates in place and takes full-width cos/sin tables.

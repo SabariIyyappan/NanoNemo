@@ -1,0 +1,394 @@
+{
+  "kernel": "rope",
+  "peak_gbps": 448.0,
+  "rows": [
+    {
+      "case": "fp16 B=2 T=1024",
+      "shape": [
+        2,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "eager",
+      "fwd_ms": {
+        "median": 0.3216480016708374,
+        "p20": 0.31976959109306335,
+        "p80": 0.3337984085083008
+      },
+      "fwd_bwd_ms": {
+        "median": 0.7536799907684326,
+        "p20": 0.6780799627304077,
+        "p80": 0.7587456107139587
+      },
+      "gpu": {
+        "n_samples": 7,
+        "sm_mhz": {
+          "median": 1140,
+          "min": 1140,
+          "max": 1215
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 51,
+          "max": 51
+        },
+        "power_w_median": 36.16,
+        "util_pct_median": 1,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x0"
+      },
+      "flag": null,
+      "gbps_fwd": 26.08008741364602,
+      "gbps_fwd_bwd": 22.260397258117976,
+      "pct_peak_fwd": 0.058214480834031294,
+      "pct_peak_fwd_bwd": 0.04968838673687048
+    },
+    {
+      "case": "fp16 B=2 T=1024",
+      "shape": [
+        2,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "compile",
+      "fwd_ms": {
+        "median": 0.027456000447273254,
+        "p20": 0.027065599337220192,
+        "p80": 0.02813440002501011
+      },
+      "fwd_bwd_ms": {
+        "median": 0.05455999821424484,
+        "p20": 0.05379199981689453,
+        "p80": 0.05510399863123894
+      },
+      "gpu": {
+        "n_samples": 70,
+        "sm_mhz": {
+          "median": 1140.0,
+          "min": 1140,
+          "max": 1920
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 52.0,
+          "max": 54
+        },
+        "power_w_median": 35.43,
+        "util_pct_median": 0.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 305.5291325519009,
+      "gbps_fwd_bwd": 307.50030331965274,
+      "pct_peak_fwd": 0.6819846708747788,
+      "pct_peak_fwd_bwd": 0.6863846056242249
+    },
+    {
+      "case": "fp16 B=2 T=1024",
+      "shape": [
+        2,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "triton",
+      "fwd_ms": {
+        "median": 0.026623999699950218,
+        "p20": 0.026425600051879883,
+        "p80": 0.026655999943614006
+      },
+      "fwd_bwd_ms": {
+        "median": 0.050944000482559204,
+        "p20": 0.050464000552892685,
+        "p80": 0.05119999870657921
+      },
+      "gpu": {
+        "n_samples": 7,
+        "sm_mhz": {
+          "median": 1140,
+          "min": 1140,
+          "max": 1140
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 52,
+          "max": 52
+        },
+        "power_w_median": 42.97,
+        "util_pct_median": 9,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x0"
+      },
+      "flag": null,
+      "gbps_fwd": 315.0769266278081,
+      "gbps_fwd_bwd": 329.3266300463333,
+      "pct_peak_fwd": 0.703296711222786,
+      "pct_peak_fwd_bwd": 0.7351040849248511
+    },
+    {
+      "case": "fp16 B=2 T=1024",
+      "shape": [
+        2,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "liger",
+      "fwd_ms": {
+        "median": 0.025151999667286873,
+        "p20": 0.02473600022494793,
+        "p80": 0.025862399488687515
+      },
+      "fwd_bwd_ms": {
+        "median": 0.047120001167058945,
+        "p20": 0.04710400104522705,
+        "p80": 0.047494400292634964
+      },
+      "gpu": {
+        "n_samples": 7,
+        "sm_mhz": {
+          "median": 1140,
+          "min": 1140,
+          "max": 1140
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 52,
+          "max": 52
+        },
+        "power_w_median": 42.89,
+        "util_pct_median": 9,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x0"
+      },
+      "flag": null,
+      "gbps_fwd": 333.51654385199316,
+      "gbps_fwd_bwd": 356.0529623188711,
+      "pct_peak_fwd": 0.7444565710981991,
+      "pct_peak_fwd_bwd": 0.794761076604623
+    },
+    {
+      "case": "fp16 B=8 T=1024",
+      "shape": [
+        8,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "eager",
+      "fwd_ms": {
+        "median": 1.1284480094909668,
+        "p20": 1.1263999938964844,
+        "p80": 1.1344447135925293
+      },
+      "fwd_bwd_ms": {
+        "median": 2.6910719871520996,
+        "p20": 2.688512086868286,
+        "p80": 2.7054784297943115
+      },
+      "gpu": {
+        "n_samples": 15,
+        "sm_mhz": {
+          "median": 1740,
+          "min": 1140,
+          "max": 1770
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 56,
+          "max": 57
+        },
+        "power_w_median": 114.27,
+        "util_pct_median": 18,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 29.735026973139963,
+      "gbps_fwd_bwd": 24.937595248434725,
+      "pct_peak_fwd": 0.06637282806504456,
+      "pct_peak_fwd_bwd": 0.055664275108113226
+    },
+    {
+      "case": "fp16 B=8 T=1024",
+      "shape": [
+        8,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "compile",
+      "fwd_ms": {
+        "median": 0.09164799749851227,
+        "p20": 0.09091199934482574,
+        "p80": 0.09216000139713287
+      },
+      "fwd_bwd_ms": {
+        "median": 0.18227200210094452,
+        "p20": 0.1802240014076233,
+        "p80": 0.18339839577674866
+      },
+      "gpu": {
+        "n_samples": 27,
+        "sm_mhz": {
+          "median": 1830,
+          "min": 1635,
+          "max": 1920
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 55,
+          "max": 57
+        },
+        "power_w_median": 58.01,
+        "util_pct_median": 88,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 366.1229150210804,
+      "gbps_fwd_bwd": 368.1797710371024,
+      "pct_peak_fwd": 0.817238649600626,
+      "pct_peak_fwd_bwd": 0.8218298460649607
+    },
+    {
+      "case": "fp16 B=8 T=1024",
+      "shape": [
+        8,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "triton",
+      "fwd_ms": {
+        "median": 0.09344000369310379,
+        "p20": 0.09279359877109528,
+        "p80": 0.09408000111579895
+      },
+      "fwd_bwd_ms": {
+        "median": 0.18454399704933167,
+        "p20": 0.18432000279426575,
+        "p80": 0.18534399569034576
+      },
+      "gpu": {
+        "n_samples": 2,
+        "sm_mhz": {
+          "median": 1770.0,
+          "min": 1770,
+          "max": 1770
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 54.0,
+          "max": 54
+        },
+        "power_w_median": 110.045,
+        "util_pct_median": 18.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 359.1013556699638,
+      "gbps_fwd_bwd": 363.6469626376451,
+      "pct_peak_fwd": 0.8015655260490264,
+      "pct_peak_fwd_bwd": 0.811711970173315
+    },
+    {
+      "case": "fp16 B=8 T=1024",
+      "shape": [
+        8,
+        1024,
+        12,
+        4,
+        64
+      ],
+      "provider": "liger",
+      "fwd_ms": {
+        "median": 0.08950400352478027,
+        "p20": 0.08872959762811661,
+        "p80": 0.09004800021648407
+      },
+      "fwd_bwd_ms": {
+        "median": 0.17587199807167053,
+        "p20": 0.17504000663757324,
+        "p80": 0.17620480060577393
+      },
+      "gpu": {
+        "n_samples": 5,
+        "sm_mhz": {
+          "median": 1830,
+          "min": 1815,
+          "max": 1905
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 56,
+          "max": 56
+        },
+        "power_w_median": 91.36,
+        "util_pct_median": 27,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 374.8930849859699,
+      "gbps_fwd_bwd": 381.57787900181876,
+      "pct_peak_fwd": 0.8368149218436828,
+      "pct_peak_fwd_bwd": 0.8517363370576312
+    }
+  ],
+  "env": {
+    "timestamp": "2026-10-26T17:52:30.976711+00:00",
+    "host": "398b160c1760",
+    "python": "3.12.3",
+    "torch": "2.10.0a0+b558c986e8.nv25.11",
+    "triton": "3.5.0",
+    "cuda_runtime": "13.0",
+    "cudnn": 91500,
+    "nccl": "2.28.8",
+    "container": "25.11",
+    "torch_arch_list": [
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_90",
+      "sm_100",
+      "sm_120",
+      "compute_120"
+    ],
+    "devices": [
+      {
+        "name": "NVIDIA GeForce RTX 2070 Super",
+        "capability": "7.5",
+        "memory_gb": 7.59
+      }
+    ],
+    "gpu_state": [
+      {
+        "name": "NVIDIA GeForce RTX 2070 Super",
+        "driver_version": "580.126.20",
+        "clocks.sm": "1890",
+        "clocks.mem": "6801",
+        "clocks.max.sm": "2100",
+        "temperature.gpu": "56",
+        "power.draw": "82.90",
+        "power.limit": "[N/A]",
+        "clocks_throttle_reasons.active": "0x0000000000000004"
+      }
+    ],
+    "git": {
+      "commit": "539dc72a14dd47b0c35c37abc43a5aa84db242ce",
+      "dirty": true
+    }
+  }
+}

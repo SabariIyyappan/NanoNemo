@@ -52,6 +52,16 @@ PEAK_TFLOPS = {
 RATED_BOOST_MHZ = {"rtx 2070 super": 1380}
 
 
+# Peak DRAM bandwidth in GB/s (10^9 bytes/s): the ceiling for memory-bound kernels.
+PEAK_GBPS = {
+    # RTX 2070 Super laptop: 256-bit GDDR6 at 14 Gbps = 448 GB/s (NVIDIA mobile SUPER launch specs).
+    # nvidia-smi reports a 6801 MHz memory clock under load, i.e. 13.6 Gbps = 435 GB/s.
+    "rtx 2070 super": 448.0,
+    "t4": 320.0,  # NVIDIA T4 datasheet
+    "l4": 300.0,  # NVIDIA L4 datasheet
+}
+
+
 def _lookup(table: dict, device_name: str):
     name = device_name.lower().replace("nvidia", "").replace("geforce", "").replace("tesla", "")
     name = " ".join(name.replace("laptop gpu", "").split())
@@ -65,6 +75,10 @@ def _lookup(table: dict, device_name: str):
 def peak_tflops(device_name: str) -> dict | None:
     """Peak table entry for a torch/nvidia-smi device name, or None if the GPU isn't listed."""
     return _lookup(PEAK_TFLOPS, device_name)
+
+
+def peak_gbps(device_name: str) -> float | None:
+    return _lookup(PEAK_GBPS, device_name)
 
 
 def rated_boost_mhz(device_name: str) -> int | None:

@@ -1,0 +1,4 @@
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","dram__bytes_read.sum","dram__bytes_write.sum","gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed","gpu__time_duration.sum","launch__block_size","launch__grid_size","launch__registers_per_thread","sm__throughput.avg.pct_of_peak_sustained_elapsed","sm__warps_active.avg.pct_of_peak_sustained_active"
+"","","","","","","","","","","","Mbyte","Mbyte","%","us","","","register/thread","%","%"
+"0","281","python3.12","127.0.0.1","_fwd_kernel","1","7","(128, 1, 1)","(4096, 1, 1)","0","7.5","16.784256","7.542400","93.060561","63.392000","128","4096","30","28.560305","92.782409"
+"1","281","python3.12","127.0.0.1","_bwd_kernel","1","7","(128, 1, 1)","(4096, 1, 1)","0","7.5","25.175712","15.923456","92.993295","105.696000","128","4096","46","22.299993","99.126505"
