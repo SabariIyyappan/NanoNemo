@@ -119,3 +119,43 @@ Results (`python scripts/ladder_table.py rtx-2070-super`), seq 1024, micro-batch
 - CUDA graphs: no gain here either (0.99×). The T4 is slower than the laptop, so the GPU is even further ahead of the CPU's kernel launches.
 - T4 vs laptop at S3: 15,509 vs 22,994 tok/s (0.67×), with identical memory use. The T4's higher datasheet peak doesn't help when its power limit holds it at ~735 MHz.
 - Kaggle detail: the dataset now mounts at `/kaggle/input/datasets/<owner>/<slug>/`, not `/kaggle/input/<slug>/`; `docs/kaggle_workflow.md` is updated.
+
+## M5a: fused Triton kernels (RMSNorm + residual add, SwiGLU, RoPE)
+
+- Three Triton kernels, each forward + backward, each registered as a `torch.library` custom op so `torch.compile` and CUDA graphs treat it as one op (no graph breaks). Switched on per kernel by `norm_kernel` / `swiglu_kernel` / `rope_kernel` in `ModelConfig`; the `torch` default is the untouched reference path.
+- **Fused residual add + RMSNorm.** To fuse the add into the norm, blocks now pass `(x, delta)` instead of `x`: `delta` is the previous sublayer's output, not yet added. Each norm computes `h = x + delta` and returns `(rmsnorm(h), h)`. Under FP16 autocast it writes the normalized output directly in FP16 (the next matmul would cast it anyway), while `h` stays FP32. Backward: one program per chunk of rows, each keeping its partial weight gradient in registers; the partials are summed afterwards.
+- **SwiGLU.** Backward recomputes the sigmoid instead of saving it, so `silu(g)` is not kept as an extra activation.
+- **RoPE.** One launch rotates all Q and K heads of a token and reads that position's cos/sin once. The backward is the same kernel with `sin` negated (a rotation's transpose is its inverse), so nothing is saved but the tables.
+- **Tests (tests/kernels/, 62 + 6 model-level):** forward/backward vs the reference over a shape grid (odd sizes, strided inputs) in FP32 and FP16, FP64 `gradcheck`, `torch.library.opcheck`, `fullgraph=True` compile, and whole-model logits/gradient parity. A real bug the opcheck caught: the RoPE kernel assumed a contiguous last dim and failed on a transposed input. FP16 tolerances are set from observed error: the reference rounds the norm's gradient to FP16 before adding the residual's, the kernel adds in FP32 and rounds once (one element in 1.5M was 2 ulps apart at 0.002).
+
+### Kernel microbenchmarks (RTX 2070 Super laptop, 448 GB/s peak)
+
+GPU time only: each call is captured in a CUDA graph and replayed, L2 flushed before each replay. The first attempt used `triton.testing.do_bench`, which measured Python overhead (RoPE forward+backward read 1.5 ms vs 0.05 ms). Rows are clock-checked; a first unmonitored run slowed every provider ~7× mid-run (the SW thermal slowdown from M4), and the harness now rests and re-runs flagged rows. Achieved bandwidth is the minimum bytes moved over the time. Results: `results/kernels/rtx-2070-super/*.json`.
+
+| Kernel | Setting | Eager | torch.compile | Ours (Triton) | Liger 0.8.5 |
+|---|---|---|---|---|---|
+| Add + RMSNorm fwd | AMP (FP32 stream, FP16 delta), 8192 rows | 23% | 66% | **86%** | 52% |
+| Add + RMSNorm fwd+bwd | same | 15% | 49% | **85%** | 48% |
+| Add + RMSNorm fwd | all FP16, 8192 rows | 15% | 69% | **86%** | 85% |
+| Add + RMSNorm fwd+bwd | same | 10% | 60% | **82%** | 69% |
+| SwiGLU fwd+bwd | FP16, 8192 × 2048 | 50% | 89% | 88% | 87% |
+| RoPE fwd+bwd | FP16, B=8, T=1024 | 6% | 82% | 81% | 85% |
+
+(% of the 448 GB/s DRAM peak.)
+
+- RMSNorm is the one kernel with a clear win over `torch.compile` (+20 points of bandwidth): Inductor emits the add and the norm as separate kernels or a less coalesced reduction, ours is one pass. Against Liger the AMP gap is partly a different contract: Liger writes the normalized output in the residual's dtype (FP32), so the model would still need a cast to FP16.
+- SwiGLU and RoPE are elementwise and bandwidth-bound; `torch.compile` already generates a fused kernel at the same bandwidth, so there is nothing to win. Ours and Liger's match it.
+- **Nsight Compute** (`results/ncu/rtx-2070-super/*.csv`; `.ncu-rep` kept locally): memory-pipeline throughput 84–93% of peak for every kernel, and the DRAM bytes match the minimum-traffic model (RMSNorm fwd: 9.45 MB read, 8.78 MB written, predicted 9.4 MB each). The weak spot is RMSNorm backward: 24% warp occupancy (only 79 programs of 128 threads, 2 per SM) and ~70 µs against ~50 µs forward.
+- At the real micro-batch of 2048 tokens, RMSNorm and RoPE are small (30–50 µs): launch gaps and clock behavior matter as much as bandwidth.
+
+### S5 on training steps
+
+| Stage | Tokens/s (min–max) | MFU | Peak mem alloc / reserved | Loss @ step 155 | Δ vs S4 |
+|---|---|---|---|---|---|
+| s4_cudagraphs | 22,506 (22,283–22,878) | 63.5% | 1.99 / 4.05 GB | 6.771 | — |
+| s5_triton | 22,754 (22,333–23,255) | 64.2% | 1.99 / 4.05 GB | 6.769 | 1.01× |
+
+- **No end-to-end gain.** 1.01× is inside the spread of both stages. `torch.compile` (S3) already fuses RMSNorm, SwiGLU, RoPE and the residual adds into Triton kernels, so hand-written ones replace kernels that were already fused. The RMSNorm microbenchmark gain (+20 points of bandwidth) is a fraction of ~50 µs per call, 25 calls per step, in a step dominated by matmuls and attention.
+- Same loss as S4 at step 155, and no memory change: the sigmoid recompute and the dropped `silu(g)` saving don't show up in peak memory, which at S4/S5 is set by the CUDA-graph pool.
+- The three single-kernel ablation configs (`configs/ablations/`) exist but were not run: with the combined effect inside the noise they could not separate anything.
+- Where the custom kernels pay off is outside this setup: eager mode (S1/S2, where RMSNorm + RoPE + SwiGLU are many small kernels), and as the template for S6 (CUDA C++ RMSNorm).
