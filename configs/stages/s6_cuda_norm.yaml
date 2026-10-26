@@ -1,0 +1,16 @@
+# S6: + our CUDA C++ fused residual add + RMSNorm in place of the Triton one (same op, same
+# custom-op wiring; one warp per row, 16-byte loads, warp-shuffle reduction).
+# Same benchmark settings as s0_fp32.yaml; only the lines marked "<-" differ from the previous stage.
+model:
+  attn_backend: mem_efficient
+  norm_kernel: cuda      # <-
+  swiglu_kernel: triton
+  rope_kernel: triton
+train:
+  data_dir: data/nemotron_cc
+  seq_len: 1024
+  micro_batch: 2          # micro 2 for every stage: the ladder compares at a fixed micro-batch
+  global_batch_tokens: 16384
+  peak_lr: 6.0e-4
+  precision: fp16
+  compile: reduce-overhead

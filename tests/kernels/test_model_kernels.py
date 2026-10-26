@@ -1,4 +1,4 @@
-"""The whole model with Triton kernels vs the reference model, on identical weights and inputs."""
+"""The whole model with our kernels vs the reference model, on identical weights and inputs."""
 
 import pytest
 import torch
@@ -12,6 +12,8 @@ pytestmark = pytest.mark.gpu
 SMALL = dict(n_layers=2, d_model=256, n_heads=4, n_kv_heads=2, d_ff=512, vocab_size=512, max_seq_len=128,
              attn_backend="mem_efficient")
 TRITON = dict(norm_kernel="triton", swiglu_kernel="triton", rope_kernel="triton")
+# Every custom kernel at once (S8). The CUDA attention is FP16-only, so these run under autocast.
+ALL = dict(TRITON, norm_kernel="cuda", attn_kernel="cuda", loss_kernel="fused")
 
 
 def _pair(**kernels):
@@ -49,8 +51,24 @@ def test_fp16_autocast_matches_reference():
     torch.testing.assert_close(loss, ref_loss, rtol=1e-3, atol=1e-3)
 
 
-def test_compiled_model_has_no_graph_breaks():
-    _, fast, idx, tgt = _pair(**TRITON)
+@pytest.mark.parametrize("kernels", [ALL, dict(norm_kernel="cuda"), dict(attn_kernel="cuda"), dict(loss_kernel="fused")],
+                         ids=["all", "cuda_norm", "cuda_attn", "fused_ce"])
+def test_fp16_autocast_loss_and_grads_match_reference(kernels):
+    ref, fast, idx, tgt = _pair(**kernels)
+    with torch.autocast("cuda", dtype=torch.float16):
+        _, ref_loss = ref(idx, tgt)
+        _, loss = fast(idx, tgt)
+    torch.testing.assert_close(loss, ref_loss, rtol=1e-3, atol=1e-3)
+    ref_loss.backward()
+    loss.backward()
+    for name, g in _grads(fast).items():
+        r = _grads(ref)[name]
+        torch.testing.assert_close(g, r, rtol=5e-2, atol=5e-2 * r.abs().max().item(), msg=name)
+
+
+@pytest.mark.parametrize("kernels", [TRITON, ALL], ids=["triton", "all"])
+def test_compiled_model_has_no_graph_breaks(kernels):
+    _, fast, idx, tgt = _pair(**kernels)
     torch._dynamo.reset()
     compiled = torch.compile(fast, fullgraph=True)
     with torch.autocast("cuda", dtype=torch.float16):

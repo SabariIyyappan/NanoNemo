@@ -129,3 +129,23 @@ Nemotron-CC has already been globally deduplicated and quality-filtered upstream
 ## Liger-Kernel is the reference for kernel comparisons
 - Liger-Kernel 0.8.5, installed with `--no-deps` so pip can't touch NGC's torch/Triton. Its fused add + RMSNorm, SwiGLU and RoPE match ours in function.
 - Differences to keep in mind when reading the numbers: Liger's add + RMSNorm writes the normalized output in the residual's dtype (FP32 in our AMP setting), so its benchmark row includes the FP16 cast the matmul would need; Liger's RoPE rotates in place and takes full-width cos/sin tables.
+
+## FlashAttention on Turing uses the WMMA API, not hand-written `mma.sync` PTX
+
+The plan named `mma.sync.m16n8k8` + `ldmatrix`. The kernel uses `nvcuda::wmma` 16×16×16 FP16 fragments instead: the same tensor cores on sm_75, compiled to the same HMMA instructions, without inline PTX or hand-derived register layouts. The one place the opaque fragment layout gets in the way, rescaling the output rows during online softmax, is handled by loading a 16×16 "row index" matrix into an accumulator fragment once, so `rows.x[i]` tells each thread which row its element `i` belongs to. Raw `mma.sync` would give control over the layout (and allow keeping P in registers instead of a shared-memory round trip); that is the next step if the remaining gap to the CUTLASS kernel needs closing.
+
+## The attention backward is parallel over key blocks, with atomics only for dQ
+
+One block owns 32 keys of one KV head and loops over every query head in its GQA group (3) and every query tile at or after its keys. dK and dV for those keys accumulate in registers across the whole group, so GQA's sum over the group happens for free and needs no atomics or `repeat_interleave`. dQ is shared by all key blocks and is added with FP32 atomics, then cast. The alternative, a second kernel parallel over query blocks for dQ, recomputes S and dP; ncu showed L2 traffic at ~5% of peak, so the atomics are not the bottleneck.
+
+## Shared-memory tiles are padded by 16 bytes per row
+
+A 64-wide FP16 row is 128 bytes, so the 16 rows a WMMA load reads all start on the same bank. ncu put both attention kernels at 81–86% L1/shared-memory throughput with ~12% SM throughput; padding rows to 72 halves (FP16) / 36 floats (FP32) cut the forward from 643 to 293 µs and the backward from 2.4 to 1.5 ms.
+
+## The CUDA RMSNorm is a drop-in for the Triton one
+
+Same `torch.library` wiring and autograd (`nanonemo::cuda_add_rms_norm_fwd/bwd`), same contract (FP32 statistics, output in the autocast dtype, residual rounded to its stored dtype before normalizing), selected by `norm_kernel: cuda`. One warp per row, 16-byte vector loads, the row cached in registers, warp-shuffle reduction. Backward writes one dw partial row per warp (2 blocks per SM × 4 warps), summed after the kernel; 4 blocks per SM made that partial buffer large enough to cost 20% at 2048 rows.
+
+## Fused linear + cross-entropy computes the gradient during the forward
+
+The LM head matmul and the loss run chunk by chunk (512 rows): cuBLAS for the logits, a Triton kernel that writes each row's loss and overwrites the logits with `softmax - onehot`, then cuBLAS for dx and dW. The (B·T, vocab) logits never exist. The gradient is kept unscaled and O(1) in FP16; the 1/N of the mean and the incoming gradient (the GradScaler's scale) are applied in FP32 in backward, so small probabilities don't underflow FP16 the way `p / N` would. With `loss_kernel: fused`, `forward(idx, targets)` returns `logits=None`: nothing in training reads them.

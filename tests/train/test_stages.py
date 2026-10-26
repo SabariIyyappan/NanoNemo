@@ -52,7 +52,7 @@ def _changed(a, b) -> set[str]:
 
 
 def test_stage_configs_differ_by_one_change():
-    names = ["s0_fp32", "s1_fp16", "s2_mem_efficient", "s3_compile", "s4_cudagraphs", "s5_triton"]
+    names = ["s0_fp32", "s1_fp16", "s2_mem_efficient", "s3_compile", "s4_cudagraphs", "s5_triton", "s6_cuda_norm", "s7_cuda_attn", "s8_fused_ce"]
     stages = [load_config(f"configs/stages/{n}.yaml") for n in names]
     for a, b in zip(stages, stages[1:]):
         changed = _changed(a, b)

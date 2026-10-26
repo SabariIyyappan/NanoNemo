@@ -20,18 +20,29 @@ class ModelConfig:
     # Pinning also stops a silent fallback: an unsupported input raises instead.
     attn_backend: str = "math"
     # "torch" (reference) or "triton" (nanonemo/kernels/triton): fused residual add + RMSNorm,
-    # SwiGLU activation, and RoPE on Q and K.
+    # SwiGLU activation, and RoPE on Q and K. The norm also has a "cuda" (C++) version.
     norm_kernel: str = "torch"
     swiglu_kernel: str = "torch"
     rope_kernel: str = "torch"
+    # "torch" (SDPA, attn_backend above) or "cuda" (nanonemo/kernels/cuda/flash_attn.cu):
+    # a hand-written FlashAttention-2 style kernel that reads K/V from their own GQA
+    # head directly, so it ignores attn_backend.
+    attn_kernel: str = "torch"
+    # "torch" (lm_head, then F.cross_entropy on the full logits) or "fused"
+    # (nanonemo/kernels/triton/linear_ce.py: chunked, never builds the (B*T, vocab) logits).
+    # With "fused", forward(idx, targets) returns logits=None.
+    loss_kernel: str = "torch"
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must divide evenly into heads"
         assert self.n_heads % self.n_kv_heads == 0, "query heads must group evenly over KV heads"
         assert self.head_dim % 2 == 0, "RoPE rotates pairs of dimensions"
         assert self.attn_backend in ("math", "mem_efficient"), f"unknown attn_backend {self.attn_backend!r}"
-        for name in ("norm_kernel", "swiglu_kernel", "rope_kernel"):
+        assert self.norm_kernel in ("torch", "triton", "cuda"), f"unknown norm_kernel {self.norm_kernel!r}"
+        for name in ("swiglu_kernel", "rope_kernel"):
             assert getattr(self, name) in ("torch", "triton"), f"unknown {name} {getattr(self, name)!r}"
+        assert self.attn_kernel in ("torch", "cuda"), f"unknown attn_kernel {self.attn_kernel!r}"
+        assert self.loss_kernel in ("torch", "fused"), f"unknown loss_kernel {self.loss_kernel!r}"
 
     @property
     def head_dim(self) -> int:

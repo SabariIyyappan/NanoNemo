@@ -1,5 +1,7 @@
 """Reference (plain PyTorch) building blocks. Optimized kernels are checked against these."""
 
+import importlib
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -25,16 +27,14 @@ class AddRMSNorm(RMSNorm):
     """Adds a pending sublayer output into the residual stream, then normalizes it.
 
     forward(x, delta) returns (rmsnorm(x + delta), x + delta); delta=None normalizes x alone.
-    Taking the add here lets the "triton" kernel do both in one pass over memory.
+    Taking the add here lets the "triton" / "cuda" kernels do both in one pass over memory.
     """
 
     def __init__(self, dim: int, eps: float = 1e-5, kernel: str = "torch"):
         super().__init__(dim, eps)
         self.fused = None
-        if kernel == "triton":
-            from nanonemo.kernels.triton.rmsnorm import add_rms_norm
-
-            self.fused = add_rms_norm
+        if kernel in ("triton", "cuda"):
+            self.fused = importlib.import_module(f"nanonemo.kernels.{kernel}.rmsnorm").add_rms_norm
 
     def forward(self, x: torch.Tensor, delta: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         if self.fused is not None:
@@ -78,6 +78,11 @@ class Attention(nn.Module):
             from nanonemo.kernels.triton.rope import apply_rope_qk
 
             self.rope_qk = apply_rope_qk
+        self.attn = None
+        if cfg.attn_kernel == "cuda":
+            from nanonemo.kernels.cuda.flash_attn import flash_attn
+
+            self.attn = flash_attn
 
     def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
         B, T, _ = x.shape
@@ -90,13 +95,16 @@ class Attention(nn.Module):
         else:
             q, k = apply_rope(q.transpose(1, 2), cos, sin), apply_rope(k.transpose(1, 2), cos, sin)  # (B, H, T, hd)
 
-        # Query head h uses K/V head h // group: [kv0, kv0, kv0, kv1, ...].
-        group = self.n_heads // self.n_kv_heads
-        k = k.repeat_interleave(group, dim=1)
-        v = v.repeat_interleave(group, dim=1)
-
-        with sdpa_kernel(self.backend):
-            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)  # (B, H, T, hd)
+        if self.attn is not None:
+            # Our kernel reads K/V straight from their own GQA head: no repeat_interleave.
+            y = self.attn(q, k, v)
+        else:
+            # Query head h uses K/V head h // group: [kv0, kv0, kv0, kv1, ...].
+            group = self.n_heads // self.n_kv_heads
+            k = k.repeat_interleave(group, dim=1)
+            v = v.repeat_interleave(group, dim=1)
+            with sdpa_kernel(self.backend):
+                y = F.scaled_dot_product_attention(q, k, v, is_causal=True)  # (B, H, T, hd)
         return self.wo(y.transpose(1, 2).reshape(B, T, -1))
 
 

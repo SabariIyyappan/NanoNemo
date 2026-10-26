@@ -1,0 +1,18 @@
+# S8: + fused LM head + cross-entropy (chunked cuBLAS matmuls + a Triton CE kernel that turns
+# each logits chunk into its gradient in place), so the (B*T, vocab) logits never exist.
+# Same benchmark settings as s0_fp32.yaml; only the lines marked "<-" differ from the previous stage.
+model:
+  attn_backend: mem_efficient
+  norm_kernel: cuda
+  swiglu_kernel: triton
+  rope_kernel: triton
+  attn_kernel: cuda
+  loss_kernel: fused     # <-
+train:
+  data_dir: data/nemotron_cc
+  seq_len: 1024
+  micro_batch: 2          # micro 2 for every stage: the ladder compares at a fixed micro-batch
+  global_batch_tokens: 16384
+  peak_lr: 6.0e-4
+  precision: fp16
+  compile: reduce-overhead

@@ -38,13 +38,19 @@ class NanoNemo(nn.Module):
             nn.init.normal_(module.weight, std=self.cfg.init_std)
 
     def forward(self, idx: torch.Tensor, targets: torch.Tensor | None = None):
-        """idx, targets: (B, T) token ids. Returns (logits, loss); loss is None without targets."""
+        """idx, targets: (B, T) token ids. Returns (logits, loss); loss is None without targets,
+        logits is None with targets under loss_kernel="fused"."""
         T = idx.shape[1]
         assert T <= self.cfg.max_seq_len, f"sequence length {T} > max_seq_len {self.cfg.max_seq_len}"
         x, delta = self.tok_emb(idx), None
         for block in self.blocks:
             x, delta = block(x, self.rope_cos, self.rope_sin, delta)
-        logits = self.lm_head(self.norm_out(x, delta)[0])
+        h = self.norm_out(x, delta)[0]
+        if targets is not None and self.cfg.loss_kernel == "fused":
+            from nanonemo.kernels.triton.linear_ce import linear_cross_entropy
+
+            return None, linear_cross_entropy(h.reshape(-1, h.size(-1)), self.lm_head.weight, targets.reshape(-1))
+        logits = self.lm_head(h)
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.float().view(-1, logits.size(-1)), targets.reshape(-1))
