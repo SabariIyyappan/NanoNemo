@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from nanonemo.model.config import ModelConfig
-from nanonemo.model.layers import Block, RMSNorm, rope_cache
+from nanonemo.model.layers import AddRMSNorm, Block, rope_cache
 
 
 class NanoNemo(nn.Module):
@@ -16,7 +16,7 @@ class NanoNemo(nn.Module):
         self.cfg = cfg
         self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
         self.blocks = nn.ModuleList(Block(cfg) for _ in range(cfg.n_layers))
-        self.norm_out = RMSNorm(cfg.d_model, cfg.norm_eps)
+        self.norm_out = AddRMSNorm(cfg.d_model, cfg.norm_eps, cfg.norm_kernel)
         self.lm_head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
         self.lm_head.weight = self.tok_emb.weight  # tied input/output embedding
 
@@ -41,10 +41,10 @@ class NanoNemo(nn.Module):
         """idx, targets: (B, T) token ids. Returns (logits, loss); loss is None without targets."""
         T = idx.shape[1]
         assert T <= self.cfg.max_seq_len, f"sequence length {T} > max_seq_len {self.cfg.max_seq_len}"
-        x = self.tok_emb(idx)
+        x, delta = self.tok_emb(idx), None
         for block in self.blocks:
-            x = block(x, self.rope_cos, self.rope_sin)
-        logits = self.lm_head(self.norm_out(x))
+            x, delta = block(x, self.rope_cos, self.rope_sin, delta)
+        logits = self.lm_head(self.norm_out(x, delta)[0])
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.float().view(-1, logits.size(-1)), targets.reshape(-1))

@@ -1,0 +1,12 @@
+# Ablation for S5: s4_cudagraphs plus only the Triton rope kernel, to measure that kernel alone.
+model:
+  attn_backend: mem_efficient
+  rope_kernel: triton  # <-
+train:
+  data_dir: data/nemotron_cc
+  seq_len: 1024
+  micro_batch: 2
+  global_batch_tokens: 16384
+  peak_lr: 6.0e-4
+  precision: fp16
+  compile: reduce-overhead

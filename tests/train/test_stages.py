@@ -42,13 +42,28 @@ def _cfg(tmp_path, **overrides) -> TrainConfig:
                        global_batch_tokens=1024, peak_lr=1e-3, **overrides)
 
 
+KERNEL_SWITCHES = {"norm_kernel", "swiglu_kernel", "rope_kernel"}
+
+
+def _changed(a, b) -> set[str]:
+    (m0, t0), (m1, t1) = a, b
+    return {k for k in vars(m0) if getattr(m0, k) != getattr(m1, k)} | {
+        k for k in vars(t0) if getattr(t0, k) != getattr(t1, k)}
+
+
 def test_stage_configs_differ_by_one_change():
-    names = ["s0_fp32", "s1_fp16", "s2_mem_efficient", "s3_compile", "s4_cudagraphs"]
+    names = ["s0_fp32", "s1_fp16", "s2_mem_efficient", "s3_compile", "s4_cudagraphs", "s5_triton"]
     stages = [load_config(f"configs/stages/{n}.yaml") for n in names]
-    for (m0, t0), (m1, t1) in zip(stages, stages[1:]):
-        changed = [k for k in vars(m0) if getattr(m0, k) != getattr(m1, k)]
-        changed += [k for k in vars(t0) if getattr(t0, k) != getattr(t1, k)]
-        assert len(changed) == 1, changed
+    for a, b in zip(stages, stages[1:]):
+        changed = _changed(a, b)
+        # S5 switches all three Triton kernels on together; that is its one change.
+        assert len(changed) == 1 or changed == KERNEL_SWITCHES, changed
+
+
+@pytest.mark.parametrize("kernel", ["norm", "swiglu", "rope"])
+def test_s5_ablations_add_one_kernel_to_s4(kernel):
+    s4 = load_config("configs/stages/s4_cudagraphs.yaml")
+    assert _changed(s4, load_config(f"configs/ablations/s5_only_{kernel}.yaml")) == {f"{kernel}_kernel"}
 
 
 def test_unknown_stage_settings_are_rejected():
@@ -98,3 +113,13 @@ def test_compiled_training_tracks_eager(tmp_path, mode):
     compiled = _losses(model_cfg, _cfg(tmp_path, precision="fp16", compile=mode), steps=15)
     # Inductor reorders and fuses FP32/FP16 math, so this is a tolerance, not bitwise.
     np.testing.assert_allclose(compiled, eager, rtol=0.02, atol=0.02)
+
+
+@pytest.mark.gpu
+def test_triton_kernels_track_s4_training(tmp_path):
+    torch._dynamo.reset()
+    base = {**vars(SMALL), "attn_backend": "mem_efficient"}
+    triton = {k: "triton" for k in KERNEL_SWITCHES}
+    s4 = _losses(ModelConfig(**base), _cfg(tmp_path, precision="fp16", compile="reduce-overhead"), steps=15)
+    s5 = _losses(ModelConfig(**{**base, **triton}), _cfg(tmp_path, precision="fp16", compile="reduce-overhead"), steps=15)
+    np.testing.assert_allclose(s5, s4, rtol=0.02, atol=0.02)
