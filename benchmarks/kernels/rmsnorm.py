@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import torch
 from common import liger_available, run
 
+from nanonemo.kernels.cuda.rmsnorm import add_rms_norm as cuda_add_rms_norm
 from nanonemo.kernels.triton.rmsnorm import add_rms_norm
 from nanonemo.model.layers import RMSNorm
 
@@ -44,14 +45,17 @@ def providers(M, x_dtype, d_dtype):
         fn = torch.compile(reference)
         return (lambda: fn(x, d, w, torch.float16)), [x, d, w]
 
-    def triton():
-        x, d, w = make_inputs(M, x_dtype, d_dtype)
+    def ours(fn):
+        def make():
+            x, d, w = make_inputs(M, x_dtype, d_dtype)
 
-        def fwd():
-            with torch.autocast("cuda", dtype=torch.float16):
-                return add_rms_norm(x, d, w, EPS)
+            def fwd():
+                with torch.autocast("cuda", dtype=torch.float16):
+                    return fn(x, d, w, EPS)
 
-        return fwd, [x, d, w]
+            return fwd, [x, d, w]
+
+        return make
 
     def liger():
         from liger_kernel.ops.fused_add_rms_norm import LigerFusedAddRMSNormFunction
@@ -64,7 +68,7 @@ def providers(M, x_dtype, d_dtype):
 
         return fwd, [x, d, w]
 
-    p = {"eager": eager, "compile": compiled, "triton": triton}
+    p = {"eager": eager, "compile": compiled, "triton": ours(add_rms_norm), "cuda": ours(cuda_add_rms_norm)}
     if liger_available():
         p["liger"] = liger
     return p

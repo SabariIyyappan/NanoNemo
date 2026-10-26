@@ -1,15 +1,20 @@
-"""Triton fused add + RMSNorm vs the plain-PyTorch reference."""
+"""Fused add + RMSNorm (the Triton and the CUDA C++ implementation) vs the plain-PyTorch reference."""
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
 import torch
 
 pytest.importorskip("triton")
-from nanonemo.kernels.triton.rmsnorm import _fwd, add_rms_norm  # noqa: E402
 from nanonemo.model.layers import RMSNorm  # noqa: E402
 
 pytestmark = pytest.mark.gpu
+
+
+@pytest.fixture(params=["triton", "cuda"], scope="module")
+def impl(request):
+    return importlib.import_module(f"nanonemo.kernels.{request.param}.rmsnorm")
 
 EPS = 1e-5
 # (rows, hidden): the model's shape, plus non-power-of-2, tiny, and wide hidden sizes.
@@ -41,10 +46,10 @@ def _clone(*ts):
 @pytest.mark.parametrize("M, N", SHAPES)
 @pytest.mark.parametrize("x_dtype, d_dtype", DTYPES)
 @pytest.mark.parametrize("with_delta", [True, False])
-def test_matches_reference(M, N, x_dtype, d_dtype, with_delta):
+def test_matches_reference(impl, M, N, x_dtype, d_dtype, with_delta):
     x, d, w = _inputs(M, N, x_dtype, d_dtype, with_delta)
     rx, rd, rw = _clone(x, d, w)
-    y, h = add_rms_norm(x, d, w, EPS)
+    y, h = impl.add_rms_norm(x, d, w, EPS)
     ry, rh = _reference(rx, rd, rw)
     tol = TOL[x_dtype]
     torch.testing.assert_close(y, ry, **tol)
@@ -63,17 +68,19 @@ def test_matches_reference(M, N, x_dtype, d_dtype, with_delta):
     torch.testing.assert_close(w.grad, rw.grad, rtol=tol["rtol"] * 10, atol=tol["atol"] * M**0.5)
 
 
-def test_autocast_writes_normalized_output_in_fp16():
+def test_autocast_writes_normalized_output_in_fp16(impl):
     x, d, w = _inputs(16, 768, torch.float32, torch.float16)
     with torch.autocast("cuda", dtype=torch.float16):
-        y, h = add_rms_norm(x, d, w, EPS)
+        y, h = impl.add_rms_norm(x, d, w, EPS)
     assert y.dtype == torch.float16 and h.dtype == torch.float32
     ry, _ = _reference(x, d, w)
     torch.testing.assert_close(y, ry.half(), rtol=1e-3, atol=1e-3)
 
 
 @pytest.mark.parametrize("with_delta", [True, False])
-def test_gradcheck_fp64(with_delta):
+def test_gradcheck_fp64(with_delta):  # Triton only: the CUDA kernels are FP32/FP16
+    from nanonemo.kernels.triton.rmsnorm import add_rms_norm
+
     x, d, w = _inputs(5, 37, torch.float64, torch.float64, with_delta)
     w = w.detach().double().requires_grad_()
     fn = (lambda x, d, w: add_rms_norm(x, d, w, EPS)) if with_delta else (lambda x, w: add_rms_norm(x, None, w, EPS)[0])
@@ -82,18 +89,18 @@ def test_gradcheck_fp64(with_delta):
 
 
 @pytest.mark.parametrize("with_delta", [True, False])
-def test_opcheck(with_delta):
+def test_opcheck(impl, with_delta):
     # Checks the schema, the fake (meta) implementation, and the autograd registration.
     x, d, w = _inputs(8, 64, torch.float32, torch.float16, with_delta)
-    torch.library.opcheck(_fwd, (x, d, w, EPS, torch.float32))
+    torch.library.opcheck(impl._fwd, (x, d, w, EPS, torch.float32))
 
 
-def test_compiles_without_graph_breaks():
+def test_compiles_without_graph_breaks(impl):
     x, d, w = _inputs(64, 768, torch.float32, torch.float16)
     torch._dynamo.reset()
-    compiled = torch.compile(lambda x, d, w: add_rms_norm(x, d, w, EPS), fullgraph=True)
+    compiled = torch.compile(lambda x, d, w: impl.add_rms_norm(x, d, w, EPS), fullgraph=True)
     with torch.autocast("cuda", dtype=torch.float16):
         y, h = compiled(x, d, w)
-        ry, rh = add_rms_norm(x, d, w, EPS)
+        ry, rh = impl.add_rms_norm(x, d, w, EPS)
     torch.testing.assert_close(y, ry)
     torch.testing.assert_close(h, rh)
