@@ -13,4 +13,8 @@ RUN pip install --no-cache-dir \
         kaggle \
         pytest
 
+# Liger-Kernel: reference Triton kernels to benchmark ours against. --no-deps keeps
+# its torch/triton requirements from touching the bundled versions.
+RUN pip install --no-cache-dir --no-deps liger-kernel==0.8.5
+
 WORKDIR /workspace/nanonemo
