@@ -159,3 +159,30 @@ GPU time only: each call is captured in a CUDA graph and replayed, L2 flushed be
 - Same loss as S4 at step 155, and no memory change: the sigmoid recompute and the dropped `silu(g)` saving don't show up in peak memory, which at S4/S5 is set by the CUDA-graph pool.
 - The three single-kernel ablation configs (`configs/ablations/`) exist but were not run: with the combined effect inside the noise they could not separate anything.
 - Where the custom kernels pay off is outside this setup: eager mode (S1/S2, where RMSNorm + RoPE + SwiGLU are many small kernels), and as the template for S6 (CUDA C++ RMSNorm).
+
+## M5b/M5c: CUDA C++ kernels
+
+**FlashAttention-2 for sm_75** (`nanonemo/kernels/cuda/flash_attn.cu`). Built in three versions, each measured at the model's shape (B=2, 12 Q / 4 KV heads, T=1024, hd 64, FP16) against PyTorch's CUTLASS memory-efficient kernel (S2's), which is 266 µs forward and 1,095 µs forward+backward:
+
+| Version | fwd | fwd+bwd | What changed |
+|---|---|---|---|
+| 1. One query row per block, scalar FMA | 33,569 µs | 94,939 µs | Correct (tests pass) but a block-wide reduction per score |
+| 2. Tiles + tensor cores (WMMA 16×16×16) | 1,514 µs | 3,969 µs | 64-query × 32-key tiles; dK/dV in registers per key block |
+| 2b. Output kept in registers, cheaper softmax | 643 µs | 3,064 µs | Rescale the O fragments in registers via a row-index fragment; half a row per lane |
+| 3. Shared-memory rows padded by 16 bytes | **293 µs** | **1,825 µs** | ncu: both kernels were at 81–86% L1/shared throughput, 12% SM: bank conflicts |
+
+The forward now ties the CUTLASS kernel; the backward is 1.85× slower than CUTLASS's (1.53 vs 0.83 ms). Correctness: matches SDPA's output and gradients (fp16 tolerance) for MHA/GQA, odd T, hd 32/64; future keys provably don't leak; `opcheck` and `fullgraph` compile pass; whole-model loss identical to SDPA and weight gradients within 0.1%. A compile bug found on the way: the fake (meta) implementation copied `q`'s strides with `empty_like`, but the kernel returns contiguous tensors, so the compiled model failed at the first transposed input; fixed and covered by a test.
+
+**S7 end to end**: 0.90× of S5 (20,495 vs 22,754 tok/s, clean clocks). Replacing CUTLASS's backward with a slower one costs more than nothing gained on the forward. The later S6+S7 re-run hit a GPU clock stuck at 1140 MHz (no throttle reason reported, rated boost 1380) and is not comparable; it is re-run after a clock reset.
+
+**CUDA C++ RMSNorm** (`nanonemo/kernels/cuda/rmsnorm.cu`), the same op and autograd as the Triton one: warp per row, 16-byte vector loads, the row in registers, shuffle-only reduction. Forward ties Triton (79–86% of DRAM peak). The backward at first trailed by 20% at 2048 rows: 4 blocks per SM meant 640 per-warp dw partial rows to write and sum; 2 blocks per SM brought it level (within ±5% of Triton across the four cases). **S6**: 23,373 tok/s, 1.03× over S5, inside run-to-run noise, for the same reason as S5: Inductor already fuses this op well.
+
+## M6: fused linear + cross-entropy
+
+`nanonemo/kernels/triton/linear_ce.py`: 512-row chunks; cuBLAS for the logits, a Triton kernel that writes each row's loss and overwrites the chunk with `softmax − onehot`, cuBLAS for dx and dW. The (2048 × 50,304) logits never exist. The O(1) gradient is kept in FP16 and the 1/N and GradScaler scale are applied in FP32 in backward, so small probabilities don't underflow. Loss and gradients match `F.cross_entropy` (FP32: 1e-5 loss, 1e-4 grads; AMP: 1e-3 loss), and the test asserts peak memory under 60% of the unfused path at the model's shape. S8 ladder row: pending the clock reset.
+
+## M7: multi-GPU code (runs on Kaggle pending)
+
+DDP (bucket size, gradient-as-bucket-view, `no_sync` on all but the last micro-batch), FSDP2 (per-block `fully_shard`, FP32 gradient reduce, optional FP16 parameter gathers, explicit prefetch, per-block compile, gradient sync once per step), TP=2 + sequence parallel (column/row-parallel attention and MLP, norms on sequence shards, vocab-sharded tied embedding/LM head with `loss_parallel`). Checkpoints are DCP with async save and a `latest` pointer written only after a save completes; a wall-clock limit stops all ranks on the same step.
+
+Tested without two GPUs: torchrun with 2 CPU ranks (gloo). Every layout matches single-process training to 1e-4 on the same global batch, and a run stopped at step 3 and resumed reproduces the uninterrupted one, including resuming an FSDP checkpoint from 2 ranks in 1 process. That last test caught a real bug: the loader position is per rank, so it is now converted through the global sample count when the world size changes. On the GPU (1 rank): FP16 resume under CUDA graphs, and FSDP/TP with the sharded GradScaler. TP + whole-model `torch.compile` failed in backward (the vocab-sharded logits' gradient came back as a plain tensor); under TP the blocks are compiled individually, as torchtitan does.
