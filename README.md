@@ -27,10 +27,10 @@ All tables below are generated from `results/` by `scripts/make_figures.py`; the
 | S2 + mem-efficient SDPA | 16,274 | 45.9% | 4.30 / 4.69 GB | 6.774 | 1.70× |
 | S3 + torch.compile | 22,994 | 64.8% | 3.25 / 3.67 GB | 6.767 | 1.41× |
 | S4 + CUDA graphs | 22,506 | 63.5% | 1.99 / 4.05 GB | 6.771 | 0.98× |
-| S5 + Triton kernels | 22,754 | 64.2% | 1.99 / 4.05 GB | 6.769 | 1.01× |
-| S6 + CUDA C++ RMSNorm | 23,373 | 65.9% | 1.99 / 4.05 GB | 6.773 | 1.03× |
-| S7 + CUDA C++ FlashAttention | 15,589 ⚠ clock-limited | 44.0% | 1.99 / 4.02 GB | 6.777 | 0.67× |
-| S8 + fused linear-CE | TBD | TBD | TBD | TBD | TBD |
+| S5 + Triton kernels | 23,754 | 67.0% | 1.99 / 4.05 GB | 6.763 | 1.06× |
+| S6 + CUDA C++ RMSNorm | 23,986 | 67.6% | 1.99 / 4.05 GB | 6.780 | 1.01× |
+| S7 + CUDA C++ FlashAttention | 21,011 | 59.2% | 1.99 / 4.02 GB | 6.772 | 0.88× |
+| S8 + fused linear-CE | 20,443 | 57.6% | 1.99 / 3.68 GB | 6.770 | 0.97× |
 
 ### Optimization ladder: Tesla T4
 
@@ -50,7 +50,14 @@ All tables below are generated from `results/` by `scripts/make_figures.py`; the
 
 ### Multi-GPU (Kaggle 2x T4)
 
-TBD
+| GPU | Strategy | GPUs | Tokens/s | Scaling eff. vs 1 GPU | Peak mem/GPU | NCCL % of kernel time |
+|---|---|---|---|---|---|---|
+| t4 | DDP (default buckets) | 2 | 33,572 | TBD | 4.85 GB | TBD |
+| t4 | DDP (100 MB buckets, grad views) | 2 | 32,792 | TBD | 4.88 GB | TBD |
+| t4 | FSDP2 | 2 | 27,268 | TBD | 5.42 GB | TBD |
+| t4 | FSDP2 + prefetch | 2 | 27,814 | TBD | 5.42 GB | TBD |
+| t4 | FSDP2 + prefetch + per-block compile | 2 | 27,805 | TBD | 5.45 GB | TBD |
+| t4 | TP=2 + SP | 2 | 19,150 | TBD | 3.44 GB | TBD |
 
 ### Precision (AWS L4)
 

@@ -1,0 +1,652 @@
+{
+  "kernel": "flash_attn",
+  "peak_gbps": 448.0,
+  "rows": [
+    {
+      "case": "fp16 B32 T256",
+      "shape": [
+        32,
+        12,
+        4,
+        256,
+        64
+      ],
+      "provider": "sdpa_mem_efficient",
+      "fwd_ms": {
+        "median": 0.5248960256576538,
+        "p20": 0.5157696008682251,
+        "p80": 0.526534378528595
+      },
+      "fwd_bwd_ms": {
+        "median": 1.509775996208191,
+        "p20": 1.5055615901947021,
+        "p80": 1.5179264545440674
+      },
+      "gpu": {
+        "n_samples": 11,
+        "sm_mhz": {
+          "median": 1320,
+          "min": 1140,
+          "max": 1905
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 45,
+          "max": 48
+        },
+        "power_w_median": 59.49,
+        "util_pct_median": 0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 63.92586409462505,
+      "gbps_fwd_bwd": 58.34003469469264,
+      "pct_peak_fwd": 0.14269166092550234,
+      "pct_peak_fwd_bwd": 0.13022329172922464
+    },
+    {
+      "case": "fp16 B32 T256",
+      "shape": [
+        32,
+        12,
+        4,
+        256,
+        64
+      ],
+      "provider": "cuda",
+      "fwd_ms": {
+        "median": 0.3665919899940491,
+        "p20": 0.3421695828437805,
+        "p80": 0.3702400028705597
+      },
+      "fwd_bwd_ms": {
+        "median": 2.582672119140625,
+        "p20": 2.5794880390167236,
+        "p80": 2.5930368900299072
+      },
+      "gpu": {
+        "n_samples": 18,
+        "sm_mhz": {
+          "median": 1860.0,
+          "min": 1785,
+          "max": 1935
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 48.0,
+          "max": 52
+        },
+        "power_w_median": 109.81,
+        "util_pct_median": 21.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 91.5307287552701,
+      "gbps_fwd_bwd": 34.10436165985655,
+      "pct_peak_fwd": 0.2043096624001565,
+      "pct_peak_fwd_bwd": 0.07612580727646552
+    },
+    {
+      "case": "fp16 B32 T256",
+      "shape": [
+        32,
+        12,
+        4,
+        256,
+        64
+      ],
+      "provider": "sdpa_math",
+      "fwd_ms": {
+        "median": 4.307024002075195,
+        "p20": 4.294464111328125,
+        "p80": 4.333676815032959
+      },
+      "fwd_bwd_ms": {
+        "median": 8.669008255004883,
+        "p20": 8.654848098754883,
+        "p80": 8.695961952209473
+      },
+      "gpu": {
+        "n_samples": 49,
+        "sm_mhz": {
+          "median": 1680,
+          "min": 1605,
+          "max": 1920
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 53,
+          "max": 53
+        },
+        "power_w_median": 115.03,
+        "util_pct_median": 93,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 7.790630371187373,
+      "gbps_fwd_bwd": 10.160376067141073,
+      "pct_peak_fwd": 0.0173897999356861,
+      "pct_peak_fwd_bwd": 0.02267941086415418
+    },
+    {
+      "case": "fp16 B16 T512",
+      "shape": [
+        16,
+        12,
+        4,
+        512,
+        64
+      ],
+      "provider": "sdpa_mem_efficient",
+      "fwd_ms": {
+        "median": 0.5926399827003479,
+        "p20": 0.5777279734611511,
+        "p80": 0.5994240045547485
+      },
+      "fwd_bwd_ms": {
+        "median": 2.2957279682159424,
+        "p20": 2.2894015312194824,
+        "p80": 2.3126463890075684
+      },
+      "gpu": {
+        "n_samples": 12,
+        "sm_mhz": {
+          "median": 1650.0,
+          "min": 1650,
+          "max": 1680
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 54.0,
+          "max": 54
+        },
+        "power_w_median": 113.945,
+        "util_pct_median": 100.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 56.61857616678198,
+      "gbps_fwd_bwd": 38.367082345757666,
+      "pct_peak_fwd": 0.1263807503722812,
+      "pct_peak_fwd_bwd": 0.08564080880749479
+    },
+    {
+      "case": "fp16 B16 T512",
+      "shape": [
+        16,
+        12,
+        4,
+        512,
+        64
+      ],
+      "provider": "cuda",
+      "fwd_ms": {
+        "median": 0.5857279896736145,
+        "p20": 0.5839679837226868,
+        "p80": 0.590182363986969
+      },
+      "fwd_bwd_ms": {
+        "median": 3.967008113861084,
+        "p20": 3.954451084136963,
+        "p80": 3.9926528930664062
+      },
+      "gpu": {
+        "n_samples": 18,
+        "sm_mhz": {
+          "median": 1867.5,
+          "min": 1650,
+          "max": 1875
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 55.0,
+          "max": 55
+        },
+        "power_w_median": 114.66,
+        "util_pct_median": 98.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 57.28671429667814,
+      "gbps_fwd_bwd": 22.20322758913429,
+      "pct_peak_fwd": 0.12787213012651372,
+      "pct_peak_fwd_bwd": 0.04956077586860332
+    },
+    {
+      "case": "fp16 B16 T512",
+      "shape": [
+        16,
+        12,
+        4,
+        512,
+        64
+      ],
+      "provider": "sdpa_math",
+      "fwd_ms": {
+        "median": 7.571167945861816,
+        "p20": 7.563570976257324,
+        "p80": 7.6074113845825195
+      },
+      "fwd_bwd_ms": {
+        "median": 15.249407768249512,
+        "p20": 15.21162223815918,
+        "p80": 15.278860092163086
+      },
+      "gpu": {
+        "n_samples": 81,
+        "sm_mhz": {
+          "median": 1665,
+          "min": 1620,
+          "max": 1860
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 55,
+          "max": 56
+        },
+        "power_w_median": 114.42,
+        "util_pct_median": 100,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 4.4318699888753486,
+      "gbps_fwd_bwd": 5.775987194951296,
+      "pct_peak_fwd": 0.009892566939453904,
+      "pct_peak_fwd_bwd": 0.012892828560159142
+    },
+    {
+      "case": "fp16 B8 T1024",
+      "shape": [
+        8,
+        12,
+        4,
+        1024,
+        64
+      ],
+      "provider": "sdpa_mem_efficient",
+      "fwd_ms": {
+        "median": 0.9415680170059204,
+        "p20": 0.932096004486084,
+        "p80": 0.9474560022354126
+      },
+      "fwd_bwd_ms": {
+        "median": 3.8930559158325195,
+        "p20": 3.8727614879608154,
+        "p80": 3.911679983139038
+      },
+      "gpu": {
+        "n_samples": 20,
+        "sm_mhz": {
+          "median": 1650.0,
+          "min": 1635,
+          "max": 1710
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 56.0,
+          "max": 56
+        },
+        "power_w_median": 114.055,
+        "util_pct_median": 99.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 35.63675846456562,
+      "gbps_fwd_bwd": 22.6249984342093,
+      "pct_peak_fwd": 0.0795463358584054,
+      "pct_peak_fwd_bwd": 0.05050222864778862
+    },
+    {
+      "case": "fp16 B8 T1024",
+      "shape": [
+        8,
+        12,
+        4,
+        1024,
+        64
+      ],
+      "provider": "cuda",
+      "fwd_ms": {
+        "median": 1.0239360332489014,
+        "p20": 1.0178560018539429,
+        "p80": 1.0308735370635986
+      },
+      "fwd_bwd_ms": {
+        "median": 6.768400192260742,
+        "p20": 6.7445759773254395,
+        "p80": 6.811878204345703
+      },
+      "gpu": {
+        "n_samples": 31,
+        "sm_mhz": {
+          "median": 1875,
+          "min": 1740,
+          "max": 1875
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 57,
+          "max": 57
+        },
+        "power_w_median": 114.75,
+        "util_pct_median": 100,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 32.770047063910184,
+      "gbps_fwd_bwd": 13.013471647364264,
+      "pct_peak_fwd": 0.07314742648194238,
+      "pct_peak_fwd_bwd": 0.029047927784295234
+    },
+    {
+      "case": "fp16 B8 T1024",
+      "shape": [
+        8,
+        12,
+        4,
+        1024,
+        64
+      ],
+      "provider": "sdpa_math",
+      "fwd_ms": {
+        "median": 15.563872337341309,
+        "p20": 15.532236099243164,
+        "p80": 15.592986106872559
+      },
+      "fwd_bwd_ms": {
+        "median": 30.270767211914062,
+        "p20": 30.217472076416016,
+        "p80": 30.345537185668945
+      },
+      "gpu": {
+        "n_samples": 163,
+        "sm_mhz": {
+          "median": 1680,
+          "min": 1620,
+          "max": 1785
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 57,
+          "max": 58
+        },
+        "power_w_median": 113.63,
+        "util_pct_median": 100,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 2.1559179664751684,
+      "gbps_fwd_bwd": 2.909750631141356,
+      "pct_peak_fwd": 0.004812316889453501,
+      "pct_peak_fwd_bwd": 0.006494979087369098
+    },
+    {
+      "case": "fp16 B4 T2048",
+      "shape": [
+        4,
+        12,
+        4,
+        2048,
+        64
+      ],
+      "provider": "sdpa_mem_efficient",
+      "fwd_ms": {
+        "median": 1.619968056678772,
+        "p20": 1.6097792387008667,
+        "p80": 1.6302144527435303
+      },
+      "fwd_bwd_ms": {
+        "median": 7.026688098907471,
+        "p20": 6.978048324584961,
+        "p80": 7.058943748474121
+      },
+      "gpu": {
+        "n_samples": 34,
+        "sm_mhz": {
+          "median": 1650.0,
+          "min": 1620,
+          "max": 1665
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 59.0,
+          "max": 59
+        },
+        "power_w_median": 114.15,
+        "util_pct_median": 100.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 20.71302076708393,
+      "gbps_fwd_bwd": 12.535120779545485,
+      "pct_peak_fwd": 0.04623442135509805,
+      "pct_peak_fwd_bwd": 0.02798018031148546
+    },
+    {
+      "case": "fp16 B4 T2048",
+      "shape": [
+        4,
+        12,
+        4,
+        2048,
+        64
+      ],
+      "provider": "cuda",
+      "fwd_ms": {
+        "median": 1.900223970413208,
+        "p20": 1.8858368396759033,
+        "p80": 1.9086847305297852
+      },
+      "fwd_bwd_ms": {
+        "median": 12.304384231567383,
+        "p20": 12.279897689819336,
+        "p80": 12.375045776367188
+      },
+      "gpu": {
+        "n_samples": 55,
+        "sm_mhz": {
+          "median": 1875,
+          "min": 1725,
+          "max": 1890
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 60,
+          "max": 60
+        },
+        "power_w_median": 114.76,
+        "util_pct_median": 97,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 17.65814584093659,
+      "gbps_fwd_bwd": 7.158455258088113,
+      "pct_peak_fwd": 0.03941550410923346,
+      "pct_peak_fwd_bwd": 0.01597869477251811
+    },
+    {
+      "case": "fp16 B4 T2048",
+      "shape": [
+        4,
+        12,
+        4,
+        2048,
+        64
+      ],
+      "provider": "sdpa_math",
+      "fwd_ms": {
+        "median": 29.27894401550293,
+        "p20": 29.226816177368164,
+        "p80": 29.327129364013672
+      },
+      "fwd_bwd_ms": {
+        "median": 56.9681282043457,
+        "p20": 56.8658447265625,
+        "p80": 57.117271423339844
+      },
+      "gpu": {
+        "n_samples": 303,
+        "sm_mhz": {
+          "median": 1650,
+          "min": 1575,
+          "max": 1815
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 60,
+          "max": 61
+        },
+        "power_w_median": 113.34,
+        "util_pct_median": 100,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 1.1460260309331252,
+      "gbps_fwd_bwd": 1.5461344224625753,
+      "pct_peak_fwd": 0.0025580938190471543,
+      "pct_peak_fwd_bwd": 0.003451192907282534
+    },
+    {
+      "case": "fp16 B2 T4096",
+      "shape": [
+        2,
+        12,
+        4,
+        4096,
+        64
+      ],
+      "provider": "sdpa_mem_efficient",
+      "fwd_ms": {
+        "median": 3.028463840484619,
+        "p20": 3.0003199577331543,
+        "p80": 3.0567359924316406
+      },
+      "fwd_bwd_ms": {
+        "median": 13.365215301513672,
+        "p20": 13.326515197753906,
+        "p80": 13.495667457580566
+      },
+      "gpu": {
+        "n_samples": 64,
+        "sm_mhz": {
+          "median": 1650.0,
+          "min": 1575,
+          "max": 1785
+        },
+        "mem_mhz_median": 6801.0,
+        "temp_c": {
+          "median": 62.0,
+          "max": 62
+        },
+        "power_w_median": 114.19,
+        "util_pct_median": 100.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 11.079687183793673,
+      "gbps_fwd_bwd": 6.590270490444287,
+      "pct_peak_fwd": 0.024731444606682307,
+      "pct_peak_fwd_bwd": 0.014710425201884569
+    },
+    {
+      "case": "fp16 B2 T4096",
+      "shape": [
+        2,
+        12,
+        4,
+        4096,
+        64
+      ],
+      "provider": "cuda",
+      "fwd_ms": {
+        "median": 3.6881279945373535,
+        "p20": 3.6603710651397705,
+        "p80": 3.7089920043945312
+      },
+      "fwd_bwd_ms": {
+        "median": 23.906095504760742,
+        "p20": 23.832338333129883,
+        "p80": 24.02864646911621
+      },
+      "gpu": {
+        "n_samples": 107,
+        "sm_mhz": {
+          "median": 1860,
+          "min": 1710,
+          "max": 1890
+        },
+        "mem_mhz_median": 6801,
+        "temp_c": {
+          "median": 63,
+          "max": 63
+        },
+        "power_w_median": 114.4,
+        "util_pct_median": 100,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      },
+      "flag": null,
+      "gbps_fwd": 9.097957568093875,
+      "gbps_fwd_bwd": 3.684432030419161,
+      "pct_peak_fwd": 0.020307941000209544,
+      "pct_peak_fwd_bwd": 0.008224178639328485
+    }
+  ],
+  "env": {
+    "timestamp": "2026-10-27T16:09:26.110770+00:00",
+    "host": "894007dc80c6",
+    "python": "3.12.3",
+    "torch": "2.10.0a0+b558c986e8.nv25.11",
+    "triton": "3.5.0",
+    "cuda_runtime": "13.0",
+    "cudnn": 91500,
+    "nccl": "2.28.8",
+    "container": "25.11",
+    "torch_arch_list": [
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_90",
+      "sm_100",
+      "sm_120",
+      "compute_120"
+    ],
+    "devices": [
+      {
+        "name": "NVIDIA GeForce RTX 2070 Super",
+        "capability": "7.5",
+        "memory_gb": 7.59
+      }
+    ],
+    "gpu_state": [
+      {
+        "name": "NVIDIA GeForce RTX 2070 Super",
+        "driver_version": "580.126.20",
+        "clocks.sm": "1890",
+        "clocks.mem": "6801",
+        "clocks.max.sm": "2100",
+        "temperature.gpu": "63",
+        "power.draw": "78.05",
+        "power.limit": "[N/A]",
+        "clocks_throttle_reasons.active": "0x0000000000000004"
+      }
+    ],
+    "git": {
+      "commit": "b346f1a30f0d3f844f2df0c001fc97854f44fbb8",
+      "dirty": true
+    }
+  }
+}

@@ -82,6 +82,13 @@ def _backward(ctx, dloss, _ddx, _ddw):
 
 _linear_ce.register_autograd(_backward, setup_context=_setup_context)
 
+# Explicit Inductor fallback. Without it, Inductor's implicit-fallback path formats every input's IR
+# into a log message even with logging off; this op's input is the IR of the whole network, and
+# printing it never finished (S8 compile ran >15 min and once grew to 30 GB of host RAM).
+from torch._inductor.lowering import make_fallback  # noqa: E402
+
+make_fallback(torch.ops.nanonemo.linear_ce.default)
+
 
 def linear_cross_entropy(x: Tensor, weight: Tensor, targets: Tensor, chunk_rows: int = 512) -> Tensor:
     """Mean CE of (x @ weight^T) vs targets. x: (N, D), weight: (V, D), targets: (N,) int64.
