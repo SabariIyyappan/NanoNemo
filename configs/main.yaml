@@ -13,10 +13,10 @@ train:
   global_batch_tokens: 524288
   total_tokens: 2415000000     # the M1 train split (2,415,765,275 tokens): one epoch
   warmup_frac: 0.02
-  peak_lr: 6.0e-4              # to be confirmed by the M7 LR sweep
+  peak_lr: 3.0e-4              # M7 LR sweep winner: val loss 5.78 at 100M tokens (6e-4: 5.94, 1.2e-3: 6.17)
   precision: fp16
   compile: default
-  parallel: ddp                # to be confirmed by the M7 multi-GPU table
+  parallel: ddp                # M7 table: fastest 2-GPU row (~33.5k tok/s; FSDP ~27.8k, TP ~19.2k)
   ddp_bucket_mb: 100
   ddp_grad_as_bucket_view: true
   eval_every: 250
