@@ -7,6 +7,8 @@ repeat_kv), 1/sqrt(head_dim) scaling, no biases, tied input/output embeddings. T
 are renamed, not changed; tests/eval/test_hf_export.py checks the logits agree.
 """
 
+import pathlib
+import sys
 from pathlib import Path
 
 import torch
@@ -61,6 +63,9 @@ def to_hf(model: NanoNemo):
 
 def load_checkpoint(path: str | Path, cfg: ModelConfig) -> NanoNemo:
     """Model weights from a DCP training checkpoint (any layout that wrote it), on the CPU."""
+    # DCP pickles a Path into .metadata; written under Python 3.13 (Kaggle) it names pathlib._local,
+    # which Python <=3.12 lacks.
+    sys.modules.setdefault("pathlib._local", pathlib)
     model = NanoNemo(cfg)
     state = {"model": model.state_dict()}
     dcp.load(state, checkpoint_id=str(path))  # reads only the model part; the optimizer state is skipped

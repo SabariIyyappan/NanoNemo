@@ -194,3 +194,17 @@ Tested without two GPUs: torchrun with 2 CPU ranks (gloo). Every layout matches 
 Run headlessly: `kaggle kernels push` with the notebook's cells, then `kaggle kernels output`. All 12 multigpu tests pass on real GPUs with NCCL. Throughput (64k-token steps): DDP 33.6k tok/s, DDP with 100 MB buckets 32.8k (same within noise), FSDP2 27.3k, FSDP2 + prefetch 27.8k, TP=2 + SP 19.2k. On this small model, FSDP's extra parameter all-gathers and TP's per-layer collectives cost more than DDP's single gradient all-reduce, and memory isn't a constraint (4.9 GB per GPU of 15). The 1-GPU row measured 2,300 tok/s, which is impossible (the same config does 28k on the laptop), so it was discarded and is re-run in a later session. The nsys rows weren't produced: Nsight Systems isn't installed on Kaggle's image.
 
 LR sweep, 100M tokens each on DDP: 3e-4 → val loss 5.78, 6e-4 → 5.94, 1.2e-3 → 6.17. The main run uses **3e-4**.
+
+## M9: main run (Kaggle 2× T4, DDP)
+
+2,414,870,528 tokens (one epoch of the train split), 4,606 steps of 0.5M tokens, peak LR 3e-4 (cosine to 3e-5, 2% warmup), FP16 AMP + mem-efficient SDPA + `torch.compile`, DDP over 2 T4s. Two Kaggle sessions launched headlessly: session 1 stopped itself on the 11.5 h limit at step 2,860, wrote a checkpoint, and session 2 resumed from it (uploaded as a private dataset) and finished. **Final val loss 3.397** (train 3.38), median 36.2k tok/s, 22% MFU, 4.9 GB per GPU. The loss curve shows no step at the resume point: model, AdamW moments, LR schedule position, loader position and GradScaler state all came back exactly.
+
+Things that went wrong on the way:
+- Kaggle's checkpoint dataset flattened the uploaded `ckpt/` folder (`latest` at the dataset root), so the notebook's `ckpt/latest` glob found nothing. The session-2 notebook also searches for a `latest` next to `step_*/.metadata`, and refuses to start if no checkpoint is found rather than restarting from scratch.
+- The run's own checkpoint `.metadata` is a pickle that names `pathlib._local.PosixPath` (Kaggle runs Python 3.13); the local container is 3.12 and couldn't unpickle it. `load_checkpoint` aliases the module.
+- One downloaded file (`latest`, 11 bytes) came back as a Kaggle 502 error page; the shard files had their exact sizes.
+- W&B through a Kaggle secret didn't work: secrets aren't served to notebooks pushed with the CLI. Both sessions' `metrics.jsonl` were logged to the W&B run afterwards from the laptop.
+
+Session 2 also re-ran the M7 single-GPU row (18.1k tok/s; DDP's 33.6k is 93% scaling efficiency) and the T4 S5–S8 rows: 15.3k, 15.3k, 14.2k, 13.8k tok/s, the same shape as the laptop (S5/S6 ≈ S4, S7 0.93×, S8 0.97×). Kaggle's T4s ran at 650–900 MHz SM (thermal), so these are noisier than the laptop's.
+
+The main run uses the S3 stack, not S5–S8: on both GPUs the custom kernels measured ≤1.06× (S7/S8 slower), and the multi-GPU tests and LR sweep were done on S3.

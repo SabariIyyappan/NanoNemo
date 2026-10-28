@@ -1,0 +1,20 @@
+{
+  "tokens": 2414870528,
+  "steps": 4606,
+  "val_loss": 3.397402602434158,
+  "final_train_loss": 3.381758689880371,
+  "tokens_per_s_median": 36216.915287918855,
+  "mfu_median": 0.22232502080987157,
+  "peak_mem_gb_per_gpu": 4.889007568359375,
+  "sessions": 2,
+  "parallel": "ddp",
+  "world": 2,
+  "gpu": "Kaggle 2x Tesla T4",
+  "commits": [
+    "b346f1a30f0d3f844f2df0c001fc97854f44fbb8",
+    "5a0bad352902f18937ef232235ba3cf3d22dcbf6"
+  ],
+  "resumed_at_steps": [
+    2861
+  ]
+}

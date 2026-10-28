@@ -12,6 +12,7 @@ __pycache__/
 /data/
 /checkpoints/
 /runs/
+/exports/
 /wandb/
 *.bin
 *.nsys-rep
