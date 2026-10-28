@@ -208,3 +208,7 @@ Things that went wrong on the way:
 Session 2 also re-ran the M7 single-GPU row (18.1k tok/s; DDP's 33.6k is 93% scaling efficiency) and the T4 S5–S8 rows: 15.3k, 15.3k, 14.2k, 13.8k tok/s, the same shape as the laptop (S5/S6 ≈ S4, S7 0.93×, S8 0.97×). Kaggle's T4s ran at 650–900 MHz SM (thermal), so these are noisier than the laptop's.
 
 The main run uses the S3 stack, not S5–S8: on both GPUs the custom kernels measured ≤1.06× (S7/S8 slower), and the multi-GPU tests and LR sweep were done on S3.
+
+## M10: NanoNemo evaluated
+
+Exported to HF Llama format and run through the same lm-eval setup as GPT-2 124M (0-shot, FP32): HellaSwag 28.9% (GPT-2 31.1%), **ARC-Easy 42.4% (39.5%)**, PIQA 60.7% (62.5%), LAMBADA 17.1% (32.6%). With roughly a quarter of GPT-2's training tokens, NanoNemo is within ~2 points on HellaSwag and PIQA and ahead on ARC-Easy, which fits Nemotron-CC's high-quality split being educational, knowledge-dense web text. LAMBADA is the outlier: predicting the final word of a novel passage needs long-range narrative tracking, and the training data has little fiction, while GPT-2's WebText has much more of it.

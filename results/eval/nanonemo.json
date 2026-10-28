@@ -1,0 +1,89 @@
+{
+  "name": "nanonemo",
+  "model": "exports/nanonemo",
+  "scores": {
+    "hellaswag": {
+      "metric": "acc_norm",
+      "value": 0.28888667596096396,
+      "stderr": 0.004523188431143017
+    },
+    "arc_easy": {
+      "metric": "acc_norm",
+      "value": 0.4238215488215488,
+      "stderr": 0.01014000609521362
+    },
+    "piqa": {
+      "metric": "acc_norm",
+      "value": 0.6071817192600653,
+      "stderr": 0.011394640056759666
+    },
+    "lambada_openai": {
+      "metric": "acc",
+      "value": 0.17096836794100523,
+      "stderr": 0.005245120941662064
+    }
+  },
+  "limit": null,
+  "settings": {
+    "backend": "hf",
+    "dtype": "float32",
+    "num_fewshot": 0,
+    "batch_size": 32
+  },
+  "versions": {
+    "arc_easy": 1.0,
+    "hellaswag": 1.0,
+    "lambada_openai": 1.0,
+    "piqa": 1.0
+  },
+  "n_samples": {
+    "lambada_openai": {
+      "original": 5153,
+      "effective": 5153
+    },
+    "piqa": {
+      "original": 1838,
+      "effective": 1838
+    },
+    "arc_easy": {
+      "original": 2376,
+      "effective": 2376
+    },
+    "hellaswag": {
+      "original": 10042,
+      "effective": 10042
+    }
+  },
+  "lm_eval": "0.4.9",
+  "seconds": 265.7235279083252,
+  "raw": {
+    "arc_easy": {
+      "alias": "arc_easy",
+      "acc,none": 0.44486531986531985,
+      "acc_stderr,none": 0.01019721669035638,
+      "acc_norm,none": 0.4238215488215488,
+      "acc_norm_stderr,none": 0.01014000609521362
+    },
+    "hellaswag": {
+      "alias": "hellaswag",
+      "acc,none": 0.27962557259510057,
+      "acc_stderr,none": 0.0044789797955071394,
+      "acc_norm,none": 0.28888667596096396,
+      "acc_norm_stderr,none": 0.004523188431143017
+    },
+    "lambada_openai": {
+      "alias": "lambada_openai",
+      "perplexity,none": 419.3870173064416,
+      "perplexity_stderr,none": 20.76358613685542,
+      "acc,none": 0.17096836794100523,
+      "acc_stderr,none": 0.005245120941662064
+    },
+    "piqa": {
+      "alias": "piqa",
+      "acc,none": 0.6088139281828074,
+      "acc_stderr,none": 0.011386215606728629,
+      "acc_norm,none": 0.6071817192600653,
+      "acc_norm_stderr,none": 0.011394640056759666
+    }
+  }
+}

@@ -75,7 +75,7 @@ All tables below are generated from `results/` by `scripts/make_figures.py`; the
 | Model | Tokens trained | HellaSwag (acc_norm) | ARC-Easy (acc_norm) | PIQA (acc_norm) | LAMBADA (acc) | Val loss |
 |---|---|---|---|---|---|---|
 | GPT-2 124M (HF `gpt2`, evaluated by us) | ~10B+ (published) | 31.1% ± 0.5% | 39.5% ± 1.0% | 62.5% ± 1.1% | 32.6% ± 0.7% | n/a |
-| NanoNemo-114M (ours) | 2,414,870,528 | TBD | TBD | TBD | TBD | 3.397 |
+| NanoNemo-114M (ours) | 2,414,870,528 | 28.9% ± 0.5% | 42.4% ± 1.0% | 60.7% ± 1.1% | 17.1% ± 0.5% | 3.397 |
 
 ### Main run
 
