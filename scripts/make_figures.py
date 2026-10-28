@@ -117,40 +117,11 @@ def dist() -> str:
             if r is None:
                 continue
             tps = r["tokens_per_s"]["median"]
-            comm = _nccl_share(RESULTS / "nsys" / gpu_dir.name / f"{stem}_cuda_gpu_kern_sum.csv")
             rows.append([gpu, name, n, f"{tps:,.0f}",
                          f"{tps / (int(n) * base['tokens_per_s']['median']):.0%}" if base else TBD,
-                         f"{r['peak_mem_gb']['allocated']:.2f} GB", comm])
-    return table(["GPU", "Strategy", "GPUs", "Tokens/s", "Scaling eff. vs 1 GPU", "Peak mem/GPU", "NCCL % of kernel time"],
+                         f"{r['peak_mem_gb']['allocated']:.2f} GB"])
+    return table(["GPU", "Strategy", "GPUs", "Tokens/s", "Scaling eff. vs 1 GPU", "Peak mem/GPU"],
                  rows) if rows else TBD
-
-
-def _nccl_share(path: Path) -> str:
-    if not path.exists():
-        return TBD
-    import csv
-
-    rows = list(csv.DictReader(path.open()))
-    total = sum(float(r["Total Time (ns)"]) for r in rows)
-    comm = sum(float(r["Total Time (ns)"]) for r in rows if "nccl" in r["Name"].lower())
-    return f"{comm / total:.1%}"
-
-
-PRECISION = {"fp16": "FP16 AMP", "bf16": "BF16 AMP", "bf16_te": "BF16 + Transformer Engine linears",
-             "fp8_delayed": "FP8 (TE, delayed scaling)", "fp8_current": "FP8 (TE, current scaling)"}
-
-
-def precision() -> str:
-    rows = []
-    for stem, name in PRECISION.items():
-        r = load(RESULTS / "ladder" / "l4" / f"{stem}.json")
-        curve = RESULTS / "precision" / "l4" / f"{stem}.jsonl"
-        vals = [json.loads(line)["val_loss"] for line in curve.read_text().splitlines()
-                if "val_loss" in line] if curve.exists() else []
-        rows.append([name, f"{r['tokens_per_s']['median']:,.0f}" if r else TBD,
-                     f"{r['mfu']['fp16_tc']['median']:.1%}" if r and r["mfu"] else TBD,
-                     f"{r['peak_mem_gb']['allocated']:.2f} GB" if r else TBD, f"{vals[-1]:.3f}" if vals else TBD])
-    return table(["Precision", "Tokens/s", "MFU (vs dense FP16 TC peak)", "Peak mem", "Val loss after 20M tokens"], rows)
 
 
 def quality() -> str:
@@ -208,7 +179,6 @@ def main() -> None:
     ladder_figure(bars)
     sections.append("![Ladder tokens/s](../figures/ladder_tokens_per_s.png)")
     sections.append(f"### Multi-GPU (Kaggle 2x T4)\n\n{dist()}")
-    sections.append(f"### Precision (AWS L4)\n\n{precision()}")
     sections.append(f"### Model quality (zero-shot, lm-evaluation-harness 0.4.9, identical settings)\n\n{quality()}")
     sections.append(f"### Main run\n\n{loss_figure()}")
     for gpu, name in GPUS.items():
@@ -223,7 +193,7 @@ def main() -> None:
         text = readme.read_text()
         start, end = "<!-- results:start -->", "<!-- results:end -->"
         if start in text and end in text:
-            head = "\n\n".join(s.replace("../figures/", "figures/") for s in sections[:7]) + "\n"
+            head = "\n\n".join(s.replace("../figures/", "figures/") for s in sections[:6]) + "\n"
             text = text[: text.index(start) + len(start)] + "\n" + head + text[text.index(end):]
             readme.write_text(text)
     print("wrote docs/results.md, figures/, README.md results block")
