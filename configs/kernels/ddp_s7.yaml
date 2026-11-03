@@ -1,0 +1,18 @@
+# Our kernels in DDP training: the configs/dist/ddp.yaml row with the S7 kernel stack (Triton SwiGLU and RoPE,
+# CUDA C++ fused residual + RMSNorm, CUDA C++ FlashAttention). Only the lines marked "<-" differ from ddp.yaml.
+#   torchrun --nproc_per_node=2 scripts/bench_train.py --config configs/kernels/ddp_s7.yaml --steps 10
+model:
+  attn_backend: mem_efficient
+  norm_kernel: cuda      # <-
+  swiglu_kernel: triton  # <-
+  rope_kernel: triton    # <-
+  attn_kernel: cuda      # <-
+train:
+  data_dir: data/nemotron_cc
+  seq_len: 1024
+  micro_batch: 4
+  global_batch_tokens: 65536
+  peak_lr: 6.0e-4
+  precision: fp16
+  compile: default
+  parallel: ddp

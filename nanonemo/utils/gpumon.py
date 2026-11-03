@@ -5,6 +5,7 @@ with time.monotonic(), so a benchmark can slice out the samples of each timed tr
 A separate process keeps the sampling off the training process's CPU time.
 """
 
+import os
 import subprocess
 import threading
 import time
@@ -99,6 +100,21 @@ def summarize(samples: list[dict]) -> dict:
     }
 
 
+def locked_sm_mhz() -> int | None:
+    """The SM clock the GPU was locked to for this benchmark (`nvidia-smi -lgc F,F`), declared
+    through NANONEMO_LOCKED_SM_MHZ; None when clocks float. NVML doesn't report -lgc locks."""
+    v = os.environ.get("NANONEMO_LOCKED_SM_MHZ")
+    return int(v) if v else None
+
+
+def clock_floor(locked: int | None, device_name: str) -> int | None:
+    """Lowest acceptable trial-median SM clock: just under the locked clock if there is one
+    (every stage then runs at the same speed), else the GPU's rated boost."""
+    from nanonemo.utils.mfu import rated_boost_mhz
+
+    return int(locked * 0.98) if locked else rated_boost_mhz(device_name)
+
+
 def throttle_flags(trials: list[dict], tol: float = 0.10, min_mhz: int | None = None) -> list[str]:
     """Reasons to distrust a set of trials (summaries from `summarize`); empty means clean.
 
@@ -121,7 +137,7 @@ def throttle_flags(trials: list[dict], tol: float = 0.10, min_mhz: int | None = 
         if t["sm_mhz"]["median"] < (1 - tol) * ref:
             flags.append(f"trial {i}: median SM clock {t['sm_mhz']['median']:.0f} MHz (median of trials {ref:.0f})")
         if min_mhz and t["sm_mhz"]["median"] < min_mhz:
-            flags.append(f"trial {i}: median SM clock {t['sm_mhz']['median']:.0f} MHz is below the rated boost {min_mhz}")
+            flags.append(f"trial {i}: median SM clock {t['sm_mhz']['median']:.0f} MHz is below the floor {min_mhz} (locked clock or rated boost)")
         if t["slowdown_reasons"]:
             flags.append(f"trial {i}: {', '.join(t['slowdown_reasons'])}")
     return flags

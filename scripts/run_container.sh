@@ -30,6 +30,8 @@ EXTRA_ENV=()
 # `wandb login` once inside the container; it persists in the container home above.
 [ -n "${WANDB_API_KEY:-}" ] && EXTRA_ENV+=(-e WANDB_API_KEY)
 [ -n "${WANDB_MODE:-}" ] && EXTRA_ENV+=(-e WANDB_MODE)
+# A locked GPU clock (sudo nvidia-smi -lgc F,F) for benchmarks: see nanonemo/utils/gpumon.py.
+[ -n "${NANONEMO_LOCKED_SM_MHZ:-}" ] && EXTRA_ENV+=(-e NANONEMO_LOCKED_SM_MHZ)
 
 # --ipc=host and the ulimits are NGC's recommended flags for PyTorch
 # (shared memory for data loader workers, pinned memory, deep stacks).

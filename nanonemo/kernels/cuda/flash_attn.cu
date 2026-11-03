@@ -11,7 +11,8 @@
 // the GQA group and every query tile at or after its keys (causal), recomputing
 // P = exp(S - L) from the saved L instead of storing P. dK and dV for its keys accumulate in
 // registers (no atomics: the block owns them, across the whole group); dQ is shared by
-// many key blocks, so it is added into an FP32 buffer with atomics.
+// many key blocks, so it is added into an FP32 buffer with atomics. S, dP and dQ are never
+// staged in shared memory, which keeps two blocks resident per SM.
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAException.h>
 #include <cuda_fp16.h>
@@ -179,50 +180,96 @@ __global__ void __launch_bounds__(THREADS) bwd_kernel(const half* __restrict__ Q
                                                       float* __restrict__ dQ, float* __restrict__ dK,
                                                       float* __restrict__ dV, int H, int KVH, int T, float scale) {
     constexpr int BR = 32, BC = 32;
-    constexpr int LDH = pad_h<HD>(), LDP = pad_h<BC>(), LDS = pad_f<BC>(), LDQ = pad_f<HD>();
+    constexpr int LDH = pad_h<HD>(), LDP = pad_h<BC>();
     constexpr int TILES = (BC / 16) * (HD / 16);  // 16x16 tiles in a BC x HD (or BR x HD) matrix
     constexpr int TPW = TILES / 4;                // ... per warp
     const int k0 = blockIdx.x * BC, kvh = blockIdx.y, b = blockIdx.z;
     const int group = H / KVH;
-    const int warp = threadIdx.x / 32;
+    const int warp = threadIdx.x / 32, lane = threadIdx.x % 32;
 
+    // No FP32 staging in shared memory: S, dP, dQ and dK/dV are used straight from their
+    // accumulator fragments, with each element's (row, col) read from index fragments. That
+    // keeps the block at ~24 KB so two blocks fit per SM (at 33 KB only one did: 4 warps per
+    // SM, nothing to hide latency with).
     __shared__ __align__(32) half sK[BC * LDH];
     __shared__ __align__(32) half sV[BC * LDH];
     __shared__ __align__(32) half sQ[BR * LDH];
     __shared__ __align__(32) half sdO[BR * LDH];
-    __shared__ __align__(32) half sP[BR * LDP];
-    __shared__ __align__(32) half sdS[BR * LDP];
-    // S and dP while they are live, then reused for this tile's dQ (and at the end dK/dV).
-    __shared__ __align__(32) float sBuf[(2 * BR * LDS > BR * LDQ) ? 2 * BR * LDS : BR * LDQ];
+    __shared__ __align__(32) half sPdS[2 * BR * LDP];
     __shared__ float sLse[BR], sD[BR];
-    float* sS = sBuf;
-    float* sdP = sBuf + BR * LDS;
-    float* sdQ = sBuf;
+    half* sP = sPdS;
+    half* sdS = sPdS + BR * LDP;
+
+    // Index fragments: element i of a 16x16 accumulator sits at (rows.x[i], cols.x[i]).
+    // Built once through a per-warp FP32 scratch tile in sPdS (4 x 1 KB fits in its 5 KB).
+    FragC rows, cols;
+    {
+        float* scratch = reinterpret_cast<float*>(sPdS) + warp * 256;
+        for (int i = lane; i < 256; i += 32) scratch[i] = (float)(i / 16);
+        __syncwarp();
+        wmma::load_matrix_sync(rows, scratch, 16, wmma::mem_row_major);
+        __syncwarp();
+        for (int i = lane; i < 256; i += 32) scratch[i] = (float)(i % 16);
+        __syncwarp();
+        wmma::load_matrix_sync(cols, scratch, 16, wmma::mem_row_major);
+    }
 
     const int64_t kv_off = ((int64_t)b * KVH + kvh) * T * HD;
+    __syncthreads();  // every warp has its index fragments before sPdS is reused
     load_tile<BC, HD>(sK, K + kv_off, k0, T);
     load_tile<BC, HD>(sV, V + kv_off, k0, T);
 
     FragC dk[TPW], dv[TPW];
     for (int i = 0; i < TPW; ++i) wmma::fill_fragment(dk[i], 0.f), wmma::fill_fragment(dv[i], 0.f);
 
-    const int mt = warp / 2, nt = warp % 2;  // this warp's tile of the 32x32 S / dP
-    for (int g = 0; g < group; ++g) {
-        const int h = kvh * group + g;
+    // The (query head, query tile) pairs this block visits, flattened so the next pair's Q, dO,
+    // L and D can be fetched into registers while the current pair computes (Turing has no
+    // cp.async; without this the tensor cores idle on every tile's global loads).
+    const int qs = (k0 / BR) * BR;            // causal: only queries at or after these keys
+    const int ntiles = (T - qs + BR - 1) / BR;
+    const int iters = group * ntiles;
+    constexpr int VEC = HD / 8, PER = (BR * VEC + THREADS - 1) / THREADS;
+    int4 pq[PER], pdo[PER];
+    float pl = INFINITY, pd = 0.f;
+    auto fetch = [&](int it) {
+        const int h = kvh * group + it / ntiles, q0 = qs + (it % ntiles) * BR;
         const int64_t q_off = ((int64_t)b * H + h) * T * HD;
-        const int64_t row_off = ((int64_t)b * H + h) * T;
-        for (int q0 = (k0 / BR) * BR; q0 < T; q0 += BR) {  // causal: only queries at or after these keys
-            __syncthreads();  // previous tile's reads of sQ/sdO/sdQ are done
-            load_tile<BR, HD>(sQ, Q + q_off, q0, T);
-            load_tile<BR, HD>(sdO, dO + q_off, q0, T);
-            for (int r = threadIdx.x; r < BR; r += THREADS) {
-                const bool ok = q0 + r < T;
-                sLse[r] = ok ? L[row_off + q0 + r] : INFINITY;
-                sD[r] = ok ? D[row_off + q0 + r] : 0.f;
+        for (int j = 0; j < PER; ++j) {
+            const int idx = threadIdx.x + j * THREADS, r = idx / VEC, c = (idx % VEC) * 8;
+            pq[j] = pdo[j] = make_int4(0, 0, 0, 0);
+            if (idx < BR * VEC && q0 + r < T) {
+                pq[j] = *reinterpret_cast<const int4*>(Q + q_off + (int64_t)(q0 + r) * HD + c);
+                pdo[j] = *reinterpret_cast<const int4*>(dO + q_off + (int64_t)(q0 + r) * HD + c);
             }
-            __syncthreads();
+        }
+        if (threadIdx.x < BR) {
+            const int64_t row = ((int64_t)b * H + h) * T + q0 + threadIdx.x;
+            const bool ok = q0 + threadIdx.x < T;
+            pl = ok ? L[row] : INFINITY;
+            pd = ok ? D[row] : 0.f;
+        }
+    };
+    fetch(0);
 
-            // S = Q K^T and dP = dO V^T, one 16x16 tile of each per warp
+    const int mt = warp / 2, nt = warp % 2;  // this warp's tile of the 32x32 S / dP
+    for (int it = 0; it < iters; ++it) {
+        const int h = kvh * group + it / ntiles, q0 = qs + (it % ntiles) * BR;
+        const int64_t q_off = ((int64_t)b * H + h) * T * HD;
+        {
+            __syncthreads();  // previous tile's reads of sQ/sdO/sP/sdS are done
+            for (int j = 0; j < PER; ++j) {
+                const int idx = threadIdx.x + j * THREADS, r = idx / VEC, c = (idx % VEC) * 8;
+                if (idx < BR * VEC) {
+                    *reinterpret_cast<int4*>(sQ + r * LDH + c) = pq[j];
+                    *reinterpret_cast<int4*>(sdO + r * LDH + c) = pdo[j];
+                }
+            }
+            if (threadIdx.x < BR) sLse[threadIdx.x] = pl, sD[threadIdx.x] = pd;
+            __syncthreads();
+            if (it + 1 < iters) fetch(it + 1);  // in flight during this tile's math
+
+            // S = Q K^T and dP = dO V^T, one 16x16 tile of each per warp; then, in registers,
+            // P = exp(S*scale - L) (masked) and dS = P * (dP - D) * scale, written as FP16.
             {
                 FragC s_acc, dp_acc;
                 wmma::fill_fragment(s_acc, 0.f);
@@ -237,17 +284,13 @@ __global__ void __launch_bounds__(THREADS) bwd_kernel(const half* __restrict__ Q
                     wmma::load_matrix_sync(vf, sV + nt * 16 * LDH + d * 16, LDH);
                     wmma::mma_sync(dp_acc, dof, vf, dp_acc);
                 }
-                wmma::store_matrix_sync(sS + mt * 16 * LDS + nt * 16, s_acc, LDS, wmma::mem_row_major);
-                wmma::store_matrix_sync(sdP + mt * 16 * LDS + nt * 16, dp_acc, LDS, wmma::mem_row_major);
-            }
-            __syncthreads();
-
-            // P = exp(S*scale - L) (masked), dS = P * (dP - D) * scale
-            for (int i = threadIdx.x; i < BR * BC; i += THREADS) {
-                const int r = i / BC, c = i % BC, q = q0 + r, key = k0 + c;
-                const float p = (key <= q && key < T) ? __expf(sS[r * LDS + c] * scale - sLse[r]) : 0.f;
-                sP[r * LDP + c] = __float2half(p);
-                sdS[r * LDP + c] = __float2half(p * (sdP[r * LDS + c] - sD[r]) * scale);
+                for (int i = 0; i < s_acc.num_elements; ++i) {
+                    const int r = mt * 16 + (int)rows.x[i], c = nt * 16 + (int)cols.x[i];
+                    const int q = q0 + r, key = k0 + c;
+                    const float p = (key <= q && key < T) ? __expf(s_acc.x[i] * scale - sLse[r]) : 0.f;
+                    sP[r * LDP + c] = __float2half(p);
+                    sdS[r * LDP + c] = __float2half(p * (dp_acc.x[i] - sD[r]) * scale);
+                }
             }
             __syncthreads();
 
@@ -264,7 +307,7 @@ __global__ void __launch_bounds__(THREADS) bwd_kernel(const half* __restrict__ Q
                     wmma::load_matrix_sync(qf, sQ + k * 16 * LDH + tn * 16, LDH);
                     wmma::mma_sync(dk[i], dst, qf, dk[i]);
                 }
-                // dQ tile = dS K (S/dP in sBuf are dead now; sdQ reuses it)
+                // dQ tile = dS K, added into the shared FP32 dQ straight from the fragment
                 FragC dq;
                 wmma::fill_fragment(dq, 0.f);
                 for (int k = 0; k < BC / 16; ++k) {
@@ -274,29 +317,24 @@ __global__ void __launch_bounds__(THREADS) bwd_kernel(const half* __restrict__ Q
                     wmma::load_matrix_sync(kf, sK + k * 16 * LDH + tn * 16, LDH);
                     wmma::mma_sync(dq, dsf, kf, dq);
                 }
-                wmma::store_matrix_sync(sdQ + tm * 16 * LDQ + tn * 16, dq, LDQ, wmma::mem_row_major);
-            }
-            __syncthreads();
-
-            for (int i = threadIdx.x; i < BR * HD; i += THREADS) {
-                const int r = i / HD, c = i % HD, q = q0 + r;
-                if (q < T) atomicAdd(&dQ[q_off + (int64_t)q * HD + c], sdQ[r * LDQ + c]);
+                for (int e = 0; e < dq.num_elements; ++e) {
+                    const int q = q0 + tm * 16 + (int)rows.x[e];
+                    if (q < T) atomicAdd(&dQ[q_off + (int64_t)q * HD + tn * 16 + (int)cols.x[e]], dq.x[e]);
+                }
             }
         }
     }
 
-    // Write dK, dV through shared memory so rows past T can be masked.
-    for (int pass = 0; pass < 2; ++pass) {
-        __syncthreads();
-        for (int i = 0; i < TPW; ++i) {
-            const int t = warp * TPW + i, tm = t / (HD / 16), tn = t % (HD / 16);
-            wmma::store_matrix_sync(sBuf + tm * 16 * LDQ + tn * 16, pass ? dv[i] : dk[i], LDQ, wmma::mem_row_major);
-        }
-        __syncthreads();
-        float* out = (pass ? dV : dK) + kv_off;
-        for (int i = threadIdx.x; i < BC * HD; i += THREADS) {
-            const int r = i / HD, c = i % HD, key = k0 + r;
-            if (key < T) out[(int64_t)key * HD + c] = sBuf[r * LDQ + c];
+    // dK, dV: this block owns its keys, so plain stores from the fragments (rows past T masked).
+    for (int i = 0; i < TPW; ++i) {
+        const int t = warp * TPW + i, tm = t / (HD / 16), tn = t % (HD / 16);
+        for (int e = 0; e < dk[i].num_elements; ++e) {
+            const int key = k0 + tm * 16 + (int)rows.x[e];
+            if (key < T) {
+                const int64_t at = kv_off + (int64_t)key * HD + tn * 16 + (int)cols.x[e];
+                dK[at] = dk[i].x[e];
+                dV[at] = dv[i].x[e];
+            }
         }
     }
 }

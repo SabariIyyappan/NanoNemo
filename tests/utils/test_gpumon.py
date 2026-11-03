@@ -42,7 +42,20 @@ def test_clock_held_below_rated_boost_is_flagged():
     capped = summarize([_sample(1140)] * 5)
     assert throttle_flags([capped] * 3) == []
     flags = throttle_flags([capped] * 3, min_mhz=1380)
-    assert flags == [f"trial {i}: median SM clock 1140 MHz is below the rated boost 1380" for i in range(3)]
+    assert flags == [f"trial {i}: median SM clock 1140 MHz is below the floor 1380 (locked clock or rated boost)" for i in range(3)]
+
+
+def test_locked_clock_sets_the_floor(monkeypatch):
+    from nanonemo.utils.gpumon import clock_floor, locked_sm_mhz
+
+    monkeypatch.delenv("NANONEMO_LOCKED_SM_MHZ", raising=False)
+    assert locked_sm_mhz() is None
+    monkeypatch.setenv("NANONEMO_LOCKED_SM_MHZ", "1140")
+    assert locked_sm_mhz() == 1140
+    locked = summarize([_sample(1140)] * 5)
+    assert throttle_flags([locked] * 3, min_mhz=clock_floor(1140, "NVIDIA GeForce RTX 2070 Super")) == []
+    slow = summarize([_sample(900)] * 5)
+    assert throttle_flags([slow] * 3, min_mhz=clock_floor(1140, "x")) != []
 
 
 def test_no_samples_is_flagged():

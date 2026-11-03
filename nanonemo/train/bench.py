@@ -20,7 +20,7 @@ from nanonemo.train.config import TrainConfig
 from nanonemo.train.optim import build_optimizer, lr_at
 from nanonemo.train.trainer import AMP_DTYPES, build_parallel, build_scaler, static_grads, train_step
 from nanonemo.utils.env import capture_env
-from nanonemo.utils.gpumon import GpuMonitor, summarize, throttle_flags
+from nanonemo.utils.gpumon import GpuMonitor, clock_floor, locked_sm_mhz, summarize, throttle_flags
 from nanonemo.utils.mfu import flops_per_token, mfu, peak_tflops, rated_boost_mhz
 
 
@@ -101,6 +101,7 @@ def benchmark(
     # NANONEMO_PROFILE=1: open the profiler capture window (nsys --capture-range=cudaProfilerApi)
     # for the first trial only, so the trace holds steady-state steps and nothing else.
     profile = os.environ.get("NANONEMO_PROFILE") == "1" and cuda
+    locked = locked_sm_mhz()
     trial_results = []
     with GpuMonitor(monitor_interval_ms) as mon:  # records nothing without nvidia-smi
         for trial in range(trials):
@@ -147,8 +148,9 @@ def benchmark(
             "reserved": torch.cuda.max_memory_reserved() / 2**30,
         } if cuda else None,
         "warmup_s": warmup_s,
+        "locked_sm_mhz": locked,
         "throttle_flags": throttle_flags(
-            [t["gpu"] for t in trial_results], min_mhz=rated_boost_mhz(torch.cuda.get_device_name())
+            [t["gpu"] for t in trial_results], min_mhz=clock_floor(locked, torch.cuda.get_device_name())
         ) if cuda else [],
         "trials": trial_results,
         "params": model.num_params(),

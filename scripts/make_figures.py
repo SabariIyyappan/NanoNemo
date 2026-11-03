@@ -124,6 +124,23 @@ def dist() -> str:
                  rows) if rows else TBD
 
 
+def kernels_ddp() -> str | None:
+    """Our S6 kernel stack in DDP training on 2x T4: same-session speed, and the 100M-token loss vs plain DDP."""
+    d = RESULTS / "kernels_ddp" / "t4-x2"
+    base = [load(d / f"{n}.json") for n in ("ddp_a", "ddp_b")]
+    ours = load(d / "ddp_s6.json")
+    if ours is None or None in base:
+        return None
+    def val(path: Path):
+        v = [json.loads(line)["val_loss"] for line in path.read_text().splitlines() if "val_loss" in line] if path.exists() else []
+        return f"{v[-1]:.3f}" if v else "n/a"
+    b = [r["tokens_per_s"]["median"] for r in base]
+    o = ours["tokens_per_s"]["median"]
+    rows = [["Plain DDP (S3 stack), run before / after", f"{b[0]:,.0f} / {b[1]:,.0f}", "1.00×", val(RESULTS / "lr_sweep" / "t4-x2" / "lr_3.0e-4.jsonl")],
+            ["DDP + our kernels (S6 stack)", f"{o:,.0f}", f"{o / b[1]:.2f}–{o / b[0]:.2f}×", val(d / "train_s6_100m.jsonl")]]
+    return table(["Config", "Tokens/s", "Speed vs plain DDP", "Val loss after 100M tokens (LR 3e-4)"], rows)
+
+
 def quality() -> str:
     main = load(RESULTS / "main" / "summary.json")
     rows = []
@@ -179,6 +196,8 @@ def main() -> None:
     ladder_figure(bars)
     sections.append("![Ladder tokens/s](../figures/ladder_tokens_per_s.png)")
     sections.append(f"### Multi-GPU (Kaggle 2x T4)\n\n{dist()}")
+    if (kd := kernels_ddp()):
+        sections.append(f"### Our kernels in DDP training (Kaggle 2x T4)\n\n{kd}")
     sections.append(f"### Model quality (zero-shot, lm-evaluation-harness 0.4.9, identical settings)\n\n{quality()}")
     sections.append(f"### Main run\n\n{loss_figure()}")
     for gpu, name in GPUS.items():
@@ -193,7 +212,7 @@ def main() -> None:
         text = readme.read_text()
         start, end = "<!-- results:start -->", "<!-- results:end -->"
         if start in text and end in text:
-            head = "\n\n".join(s.replace("../figures/", "figures/") for s in sections[:6]) + "\n"
+            head = "\n\n".join(s.replace("../figures/", "figures/") for s in sections[:7]) + "\n"
             text = text[: text.index(start) + len(start)] + "\n" + head + text[text.index(end):]
             readme.write_text(text)
     print("wrote docs/results.md, figures/, README.md results block")
