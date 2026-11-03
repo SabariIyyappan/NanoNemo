@@ -1,0 +1,23 @@
+# Our kernels in DDP training: the 100M-token LR-sweep run at 3e-4 (configs/lr_sweep/lr_3.0e-4.yaml, the main
+# run's LR) with the S6 kernel stack. Its loss curve is compared against that run's.
+#   torchrun --nproc_per_node=2 scripts/train.py --config configs/kernels/train_s6_100m.yaml --set train.data_dir=...
+model:
+  attn_backend: mem_efficient
+  norm_kernel: cuda      # <-
+  swiglu_kernel: triton  # <-
+  rope_kernel: triton    # <-
+train:
+  data_dir: data/nemotron_cc
+  out_dir: runs/kernels/train_s6_100m
+  seq_len: 1024
+  micro_batch: 4
+  global_batch_tokens: 524288
+  total_tokens: 100000000
+  warmup_frac: 0.05
+  peak_lr: 3.0e-4
+  precision: fp16
+  compile: default
+  parallel: ddp
+  eval_every: 25
+  eval_batches: 40
+  log_every: 5
