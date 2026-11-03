@@ -1,6 +1,7 @@
-# Main run with our kernels: configs/main.yaml (which trained the released model) plus the S6 kernel stack,
-# validated in DDP on 2x T4 (configs/kernels/: 1.04-1.13x the plain DDP speed, 100M-token val loss within
-# 0.03 of the plain run at every evaluation, 0.018 at the end). Only the lines marked "<-" differ from main.yaml. Same launch command as main.yaml.
+# Main run with our kernels: configs/main.yaml (which trained the released model) plus the S6 kernel stack, validated
+# in DDP on 2x T4 (configs/kernels/): a 100M-token run's val loss stays within 0.03 of the plain run at every evaluation
+# (0.018 at the end). Speed in DDP was within Kaggle's thermal drift of plain DDP; single-T4 S6 is 1.05x over S3.
+# Only the lines marked "<-" differ from main.yaml. Same launch command as main.yaml.
 model:
   attn_backend: mem_efficient
   norm_kernel: cuda      # <-

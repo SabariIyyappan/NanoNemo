@@ -8,6 +8,7 @@ A result that doesn't exist yet renders as TBD.
 """
 
 import json
+from statistics import median
 from pathlib import Path
 
 import matplotlib
@@ -45,24 +46,31 @@ def table(header: list[str], rows: list[list[str]]) -> str:
 
 
 def ladder(gpu: str) -> tuple[str, list[tuple[str, float | None]]]:
-    rows, bars, prev = [], [], None
+    rows, bars, prev, locked = [], [], None, set()
     for stem, name in STAGES.items():
         r = load(RESULTS / "ladder" / gpu / f"{stem}.json")
         if r is None:
-            rows.append([name] + [TBD] * 5)
+            rows.append([name] + [TBD] * 6)
             bars.append((name, None))
             continue
         tps = r["tokens_per_s"]["median"]
         flags = " ⚠ clock-limited" if r["throttle_flags"] else ""
         mem = r["peak_mem_gb"]
+        locked.add(r.get("locked_sm_mhz"))
+        sm = median(t["gpu"]["sm_mhz"]["median"] for t in r["trials"] if t["gpu"]["n_samples"])
         rows.append([
             name, f"{tps:,.0f}{flags}", f"{r['mfu']['fp16_tc']['median']:.1%}" if r["mfu"] else "-",
             f"{mem['allocated']:.2f} / {mem['reserved']:.2f} GB" if mem else "-",
-            f"{r['trials'][-1]['loss_last']:.3f}", f"{tps / prev:.2f}×" if prev else "—",
+            f"{r['trials'][-1]['loss_last']:.3f}", f"{sm:.0f} MHz", f"{tps / prev:.2f}×" if prev else "—",
         ])
         bars.append((name, tps))
         prev = tps
-    md = table(["Stage", "Tokens/s", "MFU", "Peak mem alloc / reserved", "Loss (last step)", "Δ vs previous"], rows)
+    md = table(["Stage", "Tokens/s", "MFU", "Peak mem alloc / reserved", "Loss (last step)", "SM clock", "Δ vs previous"], rows)
+    if len(locked) == 1 and (mhz := locked.pop()):
+        md += (f"\n\nAll stages measured in one session with the SM clock locked at {mhz} MHz (`nvidia-smi -lgc`), so rows "
+               "are directly comparable; MFU is against the peak at the rated boost clock, so it reads low.")
+    else:
+        md += "\n\nAll stages measured in one session; the GPU's clock is not lockable here, so the median SM clock is shown per stage."
     return md, bars
 
 
@@ -135,9 +143,15 @@ def kernels_ddp() -> str | None:
         v = [json.loads(line)["val_loss"] for line in path.read_text().splitlines() if "val_loss" in line] if path.exists() else []
         return f"{v[-1]:.3f}" if v else "n/a"
     b = [r["tokens_per_s"]["median"] for r in base]
-    o = ours["tokens_per_s"]["median"]
-    rows = [["Plain DDP (S3 stack), run before / after", f"{b[0]:,.0f} / {b[1]:,.0f}", "1.00×", val(RESULTS / "lr_sweep" / "t4-x2" / "lr_3.0e-4.jsonl")],
-            ["DDP + our kernels (S6 stack)", f"{o:,.0f}", f"{o / b[1]:.2f}–{o / b[0]:.2f}×", val(d / "train_s6_100m.jsonl")]]
+    lo, hi = min(b), max(b)
+    rows = [["Plain DDP (S3 stack), run first / last", f"{b[0]:,.0f} / {b[1]:,.0f}", "1.00×",
+             val(RESULTS / "lr_sweep" / "t4-x2" / "lr_3.0e-4.jsonl")]]
+    for stem, name, curve in (("ddp_s6", "DDP + our kernels, S6 stack (norm, SwiGLU, RoPE)", "train_s6_100m.jsonl"),
+                              ("ddp_s7", "DDP + our kernels, S7 stack (+ our FlashAttention)", None)):
+        r = load(d / f"{stem}.json")
+        if r:
+            o = r["tokens_per_s"]["median"]
+            rows.append([name, f"{o:,.0f}", f"{o / hi:.2f}–{o / lo:.2f}×", val(d / curve) if curve else "— (speed only)"])
     return table(["Config", "Tokens/s", "Speed vs plain DDP", "Val loss after 100M tokens (LR 3e-4)"], rows)
 
 
