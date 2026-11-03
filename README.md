@@ -87,7 +87,7 @@ All rows from one Kaggle session. T4 clocks are not lockable and drift with temp
 ![Main-run loss](figures/main_loss.png)
 <!-- results:end -->
 
-Design decisions, with the measurements behind them, are in [docs/decisions.md](docs/decisions.md); the chronological record, including what didn't help, is in [docs/devlog.md](docs/devlog.md).
+The full write-up is [docs/report.md](docs/report.md). Design decisions, with the measurements behind them, are in [docs/decisions.md](docs/decisions.md); the chronological record, including what didn't help, is in [docs/devlog.md](docs/devlog.md).
 
 ## Reproduce
 
