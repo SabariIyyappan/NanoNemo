@@ -38,15 +38,17 @@ All stages measured in one session; the GPU's clock is not lockable here, so the
 
 ### Multi-GPU (Kaggle 2x T4)
 
-| GPU | Strategy | GPUs | Tokens/s | Scaling eff. vs 1 GPU | Peak mem/GPU |
-|---|---|---|---|---|---|
-| t4 | 1 GPU | 1 | 18,146 | 100% | 4.46 GB |
-| t4 | DDP (default buckets) | 2 | 33,572 | 93% | 4.85 GB |
-| t4 | DDP (100 MB buckets, grad views) | 2 | 32,792 | 90% | 4.88 GB |
-| t4 | FSDP2 | 2 | 27,268 | 75% | 5.42 GB |
-| t4 | FSDP2 + prefetch | 2 | 27,814 | 77% | 5.42 GB |
-| t4 | FSDP2 + prefetch + per-block compile | 2 | 27,805 | 77% | 5.45 GB |
-| t4 | TP=2 + SP | 2 | 19,150 | 53% | 3.44 GB |
+| GPU | Strategy | GPUs | Tokens/s | Scaling eff. vs 1 GPU | Peak mem/GPU | SM clock (median) |
+|---|---|---|---|---|---|---|
+| t4 | 1 GPU | 1 | 16,326 | 100% | 4.46 GB | 825 MHz |
+| t4 | DDP (default buckets) | 2 | 33,838 | 104% | 4.85 GB | 690 MHz |
+| t4 | DDP (100 MB buckets, grad views) | 2 | 33,129 | 101% | 4.88 GB | 675 MHz |
+| t4 | FSDP2 | 2 | 26,065 | 80% | 5.42 GB | 900 MHz |
+| t4 | FSDP2 + prefetch | 2 | 26,032 | 80% | 5.42 GB | 900 MHz |
+| t4 | FSDP2 + prefetch + per-block compile | 2 | 26,132 | 80% | 5.45 GB | 915 MHz |
+| t4 | TP=2 + SP | 2 | 16,005 | 49% | 3.44 GB | 1305 MHz |
+
+All rows from one Kaggle session. T4 clocks are not lockable and drift with temperature (see the SM clock column), so scaling efficiencies within a few percent of 100% are not distinguishable from it.
 
 ### Our kernels in DDP training (Kaggle 2x T4)
 

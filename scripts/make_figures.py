@@ -127,9 +127,12 @@ def dist() -> str:
             tps = r["tokens_per_s"]["median"]
             rows.append([gpu, name, n, f"{tps:,.0f}",
                          f"{tps / (int(n) * base['tokens_per_s']['median']):.0%}" if base else TBD,
-                         f"{r['peak_mem_gb']['allocated']:.2f} GB"])
-    return table(["GPU", "Strategy", "GPUs", "Tokens/s", "Scaling eff. vs 1 GPU", "Peak mem/GPU"],
-                 rows) if rows else TBD
+                         f"{r['peak_mem_gb']['allocated']:.2f} GB",
+                         f"{median(t['gpu']['sm_mhz']['median'] for t in r['trials'] if t['gpu']['n_samples']):.0f} MHz"])
+    note = ("\n\nAll rows from one Kaggle session. T4 clocks are not lockable and drift with temperature (see the SM "
+            "clock column), so scaling efficiencies within a few percent of 100% are not distinguishable from it.")
+    return table(["GPU", "Strategy", "GPUs", "Tokens/s", "Scaling eff. vs 1 GPU", "Peak mem/GPU", "SM clock (median)"],
+                 rows) + note if rows else TBD
 
 
 def kernels_ddp() -> str | None:
