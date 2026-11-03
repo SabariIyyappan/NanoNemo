@@ -1,0 +1,271 @@
+{
+  "bench": {
+    "steps": 10,
+    "trials": 3,
+    "warmup_steps": 5,
+    "grad_accum": 8,
+    "tokens_per_step": 65536,
+    "device": "cuda:0",
+    "world": 2,
+    "parallel": "ddp"
+  },
+  "tokens_per_s": {
+    "median": 30296.850619314384,
+    "min": 29128.14494533546,
+    "max": 32203.534196160886
+  },
+  "step_ms": {
+    "median": 2156.7989501953125,
+    "min": 2027.6486206054688,
+    "max": 2265.545654296875
+  },
+  "flops_per_token": 798031872,
+  "achieved_tflops": 24.177852415435815,
+  "peak_tflops": {
+    "fp16_tc": 65.0,
+    "fp32": 8.1
+  },
+  "mfu": {
+    "fp16_tc": {
+      "median": 0.18598348011873705,
+      "min": 0.17880913875856458,
+      "max": 0.19768805138137147
+    },
+    "fp32": {
+      "median": 1.4924600256441862,
+      "min": 1.434888150531691,
+      "max": 1.5863855975048327
+    }
+  },
+  "peak_mem_gb": {
+    "allocated": 4.870586395263672,
+    "reserved": 4.974609375
+  },
+  "warmup_s": 30.758543920999728,
+  "locked_sm_mhz": null,
+  "throttle_flags": [],
+  "trials": [
+    {
+      "tokens_per_s": 29128.14494533546,
+      "step_ms": [
+        2136.394287109375,
+        2172.974853515625,
+        2176.83447265625,
+        2227.279296875,
+        2259.8330078125,
+        2304.62060546875,
+        2311.44140625,
+        2324.84423828125,
+        2313.720947265625,
+        2271.25830078125
+      ],
+      "loss_first": 8.497785568237305,
+      "loss_last": 7.548288822174072,
+      "loss_scale": 65536.0,
+      "gpu": {
+        "n_samples": 104,
+        "sm_mhz": {
+          "median": 945.0,
+          "min": 645,
+          "max": 1590
+        },
+        "mem_mhz_median": 5000.0,
+        "temp_c": {
+          "median": 68.0,
+          "max": 70
+        },
+        "power_w_median": 65.14,
+        "util_pct_median": 100.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      }
+    },
+    {
+      "tokens_per_s": 30296.850619314384,
+      "step_ms": [
+        2261.6943359375,
+        2232.37451171875,
+        2210.240234375,
+        2183.929443359375,
+        2162.43359375,
+        2151.164306640625,
+        2139.212158203125,
+        2111.20068359375,
+        2094.76220703125,
+        2084.27978515625
+      ],
+      "loss_first": 7.556499481201172,
+      "loss_last": 7.503378868103027,
+      "loss_scale": 65536.0,
+      "gpu": {
+        "n_samples": 100,
+        "sm_mhz": {
+          "median": 930.0,
+          "min": 675,
+          "max": 1590
+        },
+        "mem_mhz_median": 5000.0,
+        "temp_c": {
+          "median": 70.0,
+          "max": 71
+        },
+        "power_w_median": 65.58,
+        "util_pct_median": 100.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      }
+    },
+    {
+      "tokens_per_s": 32203.534196160886,
+      "step_ms": [
+        2060.551025390625,
+        2065.55810546875,
+        2056.6064453125,
+        2026.88671875,
+        2027.69775390625,
+        2046.6064453125,
+        2013.0296630859375,
+        2010.44775390625,
+        2015.5780029296875,
+        2027.5994873046875
+      ],
+      "loss_first": 7.49296236038208,
+      "loss_last": 7.414777755737305,
+      "loss_scale": 65536.0,
+      "gpu": {
+        "n_samples": 92,
+        "sm_mhz": {
+          "median": 907.5,
+          "min": 660,
+          "max": 1590
+        },
+        "mem_mhz_median": 5000.0,
+        "temp_c": {
+          "median": 71.0,
+          "max": 72
+        },
+        "power_w_median": 65.435,
+        "util_pct_median": 100.0,
+        "slowdown_reasons": [],
+        "reasons_mask": "0x4"
+      }
+    }
+  ],
+  "params": 114150144,
+  "config": {
+    "model": {
+      "n_layers": 12,
+      "d_model": 768,
+      "n_heads": 12,
+      "n_kv_heads": 4,
+      "d_ff": 2048,
+      "vocab_size": 50304,
+      "max_seq_len": 1024,
+      "norm_eps": 1e-05,
+      "rope_base": 10000.0,
+      "init_std": 0.02,
+      "attn_backend": "mem_efficient",
+      "norm_kernel": "cuda",
+      "swiglu_kernel": "triton",
+      "rope_kernel": "triton",
+      "attn_kernel": "cuda",
+      "loss_kernel": "torch",
+      "linear_impl": "torch"
+    },
+    "train": {
+      "data_dir": "/kaggle/input/datasets/sabariiyyappand/nanonemo-nemotron-cc",
+      "out_dir": "runs/default",
+      "seed": 0,
+      "seq_len": 1024,
+      "micro_batch": 4,
+      "global_batch_tokens": 65536,
+      "total_tokens": 2500000000,
+      "peak_lr": 0.0006,
+      "min_lr_ratio": 0.1,
+      "warmup_frac": 0.02,
+      "weight_decay": 0.1,
+      "grad_clip": 1.0,
+      "eval_every": 50,
+      "eval_batches": 20,
+      "log_every": 1,
+      "precision": "fp16",
+      "fp8_recipe": "delayed",
+      "compile": "default",
+      "wandb_project": null,
+      "wandb_run_name": null,
+      "parallel": "ddp",
+      "ddp_bucket_mb": 25.0,
+      "ddp_grad_as_bucket_view": false,
+      "fsdp_param_dtype": "fp32",
+      "fsdp_reshard_after_forward": true,
+      "fsdp_prefetch": false,
+      "fsdp_compile_blocks": false,
+      "ckpt_every": 0,
+      "ckpt_dir": null,
+      "ckpt_async": true,
+      "resume_from": null,
+      "stop_after_min": null,
+      "max_steps": null
+    }
+  },
+  "env": {
+    "timestamp": "2026-11-03T20:22:27.092391+00:00",
+    "host": "27ed85019408",
+    "python": "3.13.16",
+    "torch": "2.11.0+cu130",
+    "triton": "3.6.0",
+    "cuda_runtime": "13.0",
+    "cudnn": 92700,
+    "nccl": "2.28.9",
+    "container": null,
+    "torch_arch_list": [
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_90",
+      "sm_100",
+      "sm_120"
+    ],
+    "devices": [
+      {
+        "name": "Tesla T4",
+        "capability": "7.5",
+        "memory_gb": 14.56
+      },
+      {
+        "name": "Tesla T4",
+        "capability": "7.5",
+        "memory_gb": 14.56
+      }
+    ],
+    "gpu_state": [
+      {
+        "name": "Tesla T4",
+        "driver_version": "580.178.04",
+        "clocks.sm": "585",
+        "clocks.mem": "5000",
+        "clocks.max.sm": "1590",
+        "temperature.gpu": "67",
+        "power.draw": "29.69",
+        "power.limit": "70.00",
+        "clocks_throttle_reasons.active": "0x0000000000000000"
+      },
+      {
+        "name": "Tesla T4",
+        "driver_version": "580.178.04",
+        "clocks.sm": "585",
+        "clocks.mem": "5000",
+        "clocks.max.sm": "1590",
+        "temperature.gpu": "71",
+        "power.draw": "32.88",
+        "power.limit": "70.00",
+        "clocks_throttle_reasons.active": "0x0000000000000000"
+      }
+    ],
+    "git": {
+      "commit": "efd41b6f43d92a656d41c4cf37bf4c29416cd35f",
+      "dirty": true
+    }
+  },
+  "config_path": "configs/kernels/ddp_s7.yaml"
+}

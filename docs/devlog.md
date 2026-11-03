@@ -212,3 +212,19 @@ The main run uses the S3 stack, not S5–S8: on both GPUs the custom kernels mea
 ## M10: NanoNemo evaluated
 
 Exported to HF Llama format and run through the same lm-eval setup as GPT-2 124M (0-shot, FP32): HellaSwag 28.9% (GPT-2 31.1%), **ARC-Easy 42.4% (39.5%)**, PIQA 60.7% (62.5%), LAMBADA 17.1% (32.6%). With roughly a quarter of GPT-2's training tokens, NanoNemo is within ~2 points on HellaSwag and PIQA and ahead on ARC-Easy, which fits Nemotron-CC's high-quality split being educational, knowledge-dense web text. LAMBADA is the outlier: predicting the final word of a novel passage needs long-range narrative tracking, and the training data has little fiction, while GPT-2's WebText has much more of it.
+
+## FlashAttention backward, round 2
+
+ncu on the old backward kernel: 33,024 bytes of shared memory per block, so only one 4-warp block fit per SM (64 KB). That was 12.5% theoretical occupancy, one warp per scheduler with nothing to hide latency, and 8.9% tensor-pipe activity. Most of that shared memory was FP32 staging: S and dP were written out by `store_matrix_sync` only to be read back for the elementwise step, and dQ and dK/dV went through it again on the way out.
+
+Two changes:
+- **Work from the accumulator fragments.** Each element's (row, column) in a WMMA accumulator is read from two index fragments built once per warp (the trick the forward already used for rows). P and dS are computed in registers and written as FP16, dQ is added into global memory straight from its fragment, and dK/dV are stored straight from theirs. The block drops to 23,808 bytes: two blocks per SM, and one fewer block-wide barrier per tile.
+- **Prefetch the next tile.** The kernel's top stall was waiting on global loads: each (query head, query tile) step loaded Q, dO, L and D synchronously while the tensor cores idled. Turing has no `cp.async`, so the next step's tiles are now loaded into registers while the current one computes, and written to shared memory at the top of the next step.
+
+Result at the profiler's base clock, same shape (B=2, T=1,024): **backward 2.16 → 1.17 ms (1.84× faster)**, warps active 12.5% → 24%, tensor pipe 8.9% → 18.3%; forward unchanged (0.45 ms). Against CUTLASS at the locked 1,140 MHz clock: forward 1.15×, backward 1.22× its time at T=1,024 and 1.09× at T=4,096. All 8 FlashAttention tests pass unchanged.
+
+End to end at the locked clock, S7 is 0.95× of S6 (it was 0.88× with the old kernel, measured at boost clocks). One unlocked comparison this morning at ~1,590 MHz put S7 at 1.04× of S6, but it was a single run each and not under the locked method, so the table uses the locked numbers. What remains is mostly the dQ atomics (issued from fragment order, each warp request spans 8 sectors) and register pressure (172 per thread, which caps occupancy at two blocks per SM).
+
+## Consistent re-measurement (one session per GPU)
+
+The laptop ladder had been measured across days and OS states, and the laptop drops to its 1,140 MHz base clock once it heats up. Every laptop benchmark was re-run in one session with the SM clock locked at 1,140 MHz (`sudo nvidia-smi -lgc 1140,1140`; the harness reads `NANONEMO_LOCKED_SM_MHZ` and flags trials below 98% of it). The GPU then runs at 77 W and under 60 °C, and every stage came out clean on its first attempt. Absolute numbers are ~20% below boost-clock numbers; the ratios are what's comparable. The T4 ladder and the DDP kernel comparison were re-run in one Kaggle session with the current code (Kaggle doesn't allow locking clocks, so the median SM clock is shown per row).
